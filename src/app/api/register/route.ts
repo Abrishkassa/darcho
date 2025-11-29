@@ -1,23 +1,34 @@
-import { NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import bcrypt from "bcryptjs";
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const { fullname, phone, email, residence_area, region, password } = await req.json();
+    const { fullName, phone, email, residence, region, password, role } = await req.json();
 
-    const hashed = await bcrypt.hash(password, 10);
+    // Basic validation
+    if (!fullName || !phone || !residence || !region || !password || !role) {
+      return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+    }
 
-    const [result]: any = await db.execute(
-      `INSERT INTO users (fullname, phone, email, residence_area, region, password_hash)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [fullname, phone, email || null, residence_area, region, hashed]
+    // Check if user exists
+    const [existing]: any = await db.query("SELECT * FROM users WHERE phone = ?", [phone]);
+    if (existing.length > 0) {
+      return NextResponse.json({ error: "User already exists" }, { status: 400 });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Insert user
+    await db.query(
+      "INSERT INTO users (full_name, phone, email, residence, region, password_hash, role) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [fullName, phone, email || null, residence, region, hashedPassword, role]
     );
 
-    return NextResponse.json({ success: true, userId: result.insertId });
-
+    return NextResponse.json({ message: "User registered successfully" });
   } catch (err) {
     console.error(err);
-    return NextResponse.json({ error: "Registration error" }, { status: 500 });
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
