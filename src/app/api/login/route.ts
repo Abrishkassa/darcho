@@ -1,33 +1,54 @@
-import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
+import mysql from "mysql2/promise";
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const { phone, password } = await req.json();
+    const body = await req.json();
+    const { phone, password } = body;
 
     if (!phone || !password) {
       return NextResponse.json({ error: "Missing phone or password" }, { status: 400 });
     }
 
-    // Find user
-    const [rows]: any = await db.execute("SELECT * FROM users WHERE phone = ?", [phone]);
-    const user = rows[0];
+    // DB CONNECTION
+    const db = await mysql.createConnection({
+      host: "localhost",
+      user: "root",
+      password: "",
+      database: "darcho",
+    });
 
-    if (!user) {
+    // FIND USER BY PHONE
+    const [rows]: any = await db.execute(
+      "SELECT id, fullname, password, role FROM users WHERE phone = ? LIMIT 1",
+      [phone]
+    );
+
+    await db.end();
+
+    if (rows.length === 0) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Compare password
-    const match = await bcrypt.compare(password, user.password_hash);
+    const user = rows[0];
+    const match = password === user.password; 
     if (!match) {
-      return NextResponse.json({ error: "Invalid password" }, { status: 401 });
+      return NextResponse.json({ error: "Incorrect password" }, { status: 401 });
     }
 
-    // Success
-    return NextResponse.json({ message: "Login successful", user: { id: user.id, full_name: user.full_name, phone: user.phone } });
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    // SUCCESS → return role so frontend can redirect
+    return NextResponse.json(
+      {
+        message: "Login successful",
+        role: user.role,
+        fullname: user.fullname,
+        id: user.id,
+      },
+      { status: 200 }
+    );
+  } catch (err: any) {
+    console.error("LOGIN ERROR:", err);
+    return NextResponse.json({ error: "Server Error" }, { status: 500 });
   }
 }

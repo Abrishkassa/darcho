@@ -34,9 +34,9 @@ export async function POST(req: Request) {
 
     // INSERT USER + ROLE ⭐ updated query
     await db.execute(
-      `INSERT INTO users (fullname, phone, email, residence, region, password_hash, role)
+      `INSERT INTO users (fullname, phone, email, residence, region, password, role)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [fullname, phone, email, residence, region, hash, role] // ⭐ role added
+      [fullname, phone, email, residence, region, password, role] // ⭐ role added
     );
 
     await db.end();
