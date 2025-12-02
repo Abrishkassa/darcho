@@ -5,7 +5,7 @@ import mysql from "mysql2/promise";
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { fullname, phone, email, residence, region, password } = body;
+    const { fullname, phone, email, residence, region, password, role } = body; // ⭐ role added
 
     if (!fullname || !phone || !password || !region || !residence) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -32,11 +32,11 @@ export async function POST(req: Request) {
     // HASH PASSWORD
     const hash = await bcrypt.hash(password, 10);
 
-    // INSERT USER
+    // INSERT USER + ROLE ⭐ updated query
     await db.execute(
-      `INSERT INTO users (fullname, phone, email, residence, region, password_hash)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [fullname, phone, email, residence, region, hash]
+      `INSERT INTO users (fullname, phone, email, residence, region, password_hash, role)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [fullname, phone, email, residence, region, hash, role] // ⭐ role added
     );
 
     await db.end();
@@ -46,5 +46,4 @@ export async function POST(req: Request) {
     console.error("REGISTER ERROR:", err);
     return NextResponse.json({ error: "Server Error" }, { status: 500 });
   }
-  
 }
