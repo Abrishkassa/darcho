@@ -1,27 +1,50 @@
-import { NextRequest, NextResponse } from "next/server";
-import { db } from "@/lib/db";
+import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
+import mysql from "mysql2/promise";
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const { full_name, phone, email, residence_area, region, password } = await req.json();
+    const body = await req.json();
+    const { fullname, phone, email, residence, region, password } = body;
 
-    if (!full_name || !phone || !residence_area || !region || !password) {
+    if (!fullname || !phone || !password || !region || !residence) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    // Hash password
-    const password_hash = await bcrypt.hash(password, 10);
+    // DB CONNECTION
+    const db = await mysql.createConnection({
+      host: "localhost",
+      user: "root",
+      password: "",
+      database: "darcho",
+    });
 
-    // Insert into database
-    await db.execute(
-      "INSERT INTO users (full_name, phone, email, residence_area, region, password_hash) VALUES (?, ?, ?, ?, ?, ?)",
-      [full_name, phone, email || null, residence_area, region, password_hash]
+    // CHECK IF PHONE EXISTS
+    const [exists]: any = await db.execute(
+      "SELECT id FROM users WHERE phone = ? LIMIT 1",
+      [phone]
     );
 
-    return NextResponse.json({ message: "User registered successfully" });
-  } catch (err) {
-    console.error(err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    if (exists.length > 0) {
+      return NextResponse.json({ error: "Phone already registered" }, { status: 400 });
+    }
+
+    // HASH PASSWORD
+    const hash = await bcrypt.hash(password, 10);
+
+    // INSERT USER
+    await db.execute(
+      `INSERT INTO users (fullname, phone, email, residence, region, password_hash)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [fullname, phone, email, residence, region, hash]
+    );
+
+    await db.end();
+
+    return NextResponse.json({ message: "Registered successfully" }, { status: 200 });
+  } catch (err: any) {
+    console.error("REGISTER ERROR:", err);
+    return NextResponse.json({ error: "Server Error" }, { status: 500 });
   }
+  
 }

@@ -1,55 +1,42 @@
 "use client";
-
 import { useState } from "react";
-import { motion } from "framer-motion";
 
-export default function LoginForm({ onForgot }: { onForgot?: () => void }) {
-  const [email, setEmail] = useState("");
+export default function LoginForm() {
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [message, setMessage] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    // handle login logic here
-    console.log({ email, password });
+
+    const res = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, password }),
+    });
+
+    const data = await res.json();
+
+    if (res.ok) {
+      setMessage("✅ Login successful!");
+      // Later: redirect based on role
+    } else {
+      setMessage("❌ " + data.error);
+    }
   };
 
   return (
-    <motion.form
-      onSubmit={handleSubmit}
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="flex flex-col gap-4"
-    >
-      <h2 className="text-2xl font-bold text-amber-900 mb-2 text-center">Login</h2>
+    <form onSubmit={handleLogin} className="flex flex-col gap-3 p-4">
+      <input className="border p-2" placeholder="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} required />
+      <input className="border p-2" type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
 
-      <input
-        type="email"
-        placeholder="Email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        className="p-3 rounded-lg border border-amber-200 focus:border-amber-800 focus:ring-2 focus:ring-amber-200 outline-none transition"
-        required
-      />
+      <button className="bg-amber-800 text-white py-2 rounded">Login</button>
 
-      <input
-        type="password"
-        placeholder="Password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        className="p-3 rounded-lg border border-amber-200 focus:border-amber-800 focus:ring-2 focus:ring-amber-200 outline-none transition"
-        required
-      />
+      <p className="text-sm text-blue-600 cursor-pointer mt-2" onClick={() => window.location.href = "/forgot"}>
+        Forgot password?
+      </p>
 
-      <button
-        type="submit"
-        className="mt-2 px-6 py-3 rounded-xl bg-amber-800 text-amber-50 font-semibold hover:bg-amber-900 transition"
-      >
-        Login
-      </button>
-
-      <div className="text-sm text-amber-700 text-right mt-1 cursor-pointer hover:underline" onClick={onForgot}>
-        Forgot Password?
-      </div>
-    </motion.form>
+      {message && <p className="text-center mt-2">{message}</p>}
+    </form>
   );
 }

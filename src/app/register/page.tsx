@@ -1,89 +1,52 @@
 "use client";
-
 import { useState } from "react";
-import { motion } from "framer-motion";
 
 export default function RegisterForm() {
-  const [fullName, setFullName] = useState("");
+  const [fullname, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [residence, setResidence] = useState("");
+  const [residence, setResidenceArea] = useState("");
   const [region, setRegion] = useState("");
   const [password, setPassword] = useState("");
+  const [message, setMessage] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log({ fullName, phone, email, residence, region, password });
+
+    const res = await fetch("/api/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fullname,
+        phone,
+        email,
+        residence,
+        region,
+        password,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (res.ok) {
+      setMessage("✅ Registered successfully! You can now login.");
+    } else {
+      setMessage("❌ " + data.error);
+    }
   };
 
   return (
-    <motion.form
-      onSubmit={handleSubmit}
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="flex flex-col gap-4"
-    >
-      <h2 className="text-2xl font-bold text-amber-900 mb-2 text-center">Register</h2>
+    <form onSubmit={handleRegister} className="flex flex-col gap-3 p-4">
+      <input className="border p-2" placeholder="Full Name" value={fullname} onChange={(e) => setFullName(e.target.value)} required />
+      <input className="border p-2" placeholder="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} required />
+      <input className="border p-2" placeholder="Email (optional)" value={email} onChange={(e) => setEmail(e.target.value)} />
+      <input className="border p-2" placeholder="Residence Area" value={residence} onChange={(e) => setResidenceArea(e.target.value)} required />
+      <input className="border p-2" placeholder="Region" value={region} onChange={(e) => setRegion(e.target.value)} required />
+      <input className="border p-2" type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required />
 
-      <input
-        type="text"
-        placeholder="Full Name"
-        value={fullName}
-        onChange={(e) => setFullName(e.target.value)}
-        className="p-3 rounded-lg border border-amber-200 focus:border-amber-800 focus:ring-2 focus:ring-amber-200 outline-none transition"
-        required
-      />
+      <button className="bg-amber-800 text-white py-2 rounded">Register</button>
 
-      <input
-        type="text"
-        placeholder="Phone"
-        value={phone}
-        onChange={(e) => setPhone(e.target.value)}
-        className="p-3 rounded-lg border border-amber-200 focus:border-amber-800 focus:ring-2 focus:ring-amber-200 outline-none transition"
-        required
-      />
-
-      <input
-        type="email"
-        placeholder="Email (optional)"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        className="p-3 rounded-lg border border-amber-200 focus:border-amber-800 focus:ring-2 focus:ring-amber-200 outline-none transition"
-      />
-
-      <input
-        type="text"
-        placeholder="Residence Area"
-        value={residence}
-        onChange={(e) => setResidence(e.target.value)}
-        className="p-3 rounded-lg border border-amber-200 focus:border-amber-800 focus:ring-2 focus:ring-amber-200 outline-none transition"
-        required
-      />
-
-      <input
-        type="text"
-        placeholder="Region"
-        value={region}
-        onChange={(e) => setRegion(e.target.value)}
-        className="p-3 rounded-lg border border-amber-200 focus:border-amber-800 focus:ring-2 focus:ring-amber-200 outline-none transition"
-        required
-      />
-
-      <input
-        type="password"
-        placeholder="Password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        className="p-3 rounded-lg border border-amber-200 focus:border-amber-800 focus:ring-2 focus:ring-amber-200 outline-none transition"
-        required
-      />
-
-      <button
-        type="submit"
-        className="mt-2 px-6 py-3 rounded-xl bg-amber-800 text-amber-50 font-semibold hover:bg-amber-900 transition"
-      >
-        Register
-      </button>
-    </motion.form>
+      {message && <p className="text-center mt-2">{message}</p>}
+    </form>
   );
 }
