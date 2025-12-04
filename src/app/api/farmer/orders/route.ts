@@ -1,40 +1,48 @@
 import { NextResponse } from "next/server";
 import mysql from "mysql2/promise";
 
-export async function GET(req: Request) {
+const pool = mysql.createPool({
+  host: "localhost",
+  user: "root",
+  password: " ",
+  database: "darcho",
+  waitForConnections: true,
+  connectionLimit: 10,
+});
+
+export async function GET() {
+  let connection;
   try {
-    const url = new URL(req.url);
-    const farmer_id = url.searchParams.get("farmer_id");
+    connection = await pool.getConnection();
+    
+    // Assuming you have an 'orders' table
+    const [rows] = await connection.query(`
+      SELECT 
+        o.id,
+        o.buyer_name as buyer,
+        p.name as product,
+        o.quantity,
+        o.status
+      FROM orders o
+      JOIN products p ON o.product_id = p.id
+      ORDER BY o.created_at DESC
+    `);
 
-    if (!farmer_id) {
-      return NextResponse.json(
-        { error: "Missing farmer_id" },
-        { status: 400 }
-      );
-    }
-
-    const db = await mysql.createConnection({
-      host: "localhost",
-      user: "root",
-      password: "",
-      database: "darcho",
+    return NextResponse.json({ 
+      success: true,
+      orders: rows 
     });
 
-    const [rows]: any = await db.execute(
-      `SELECT orders.id AS order_id, orders.quantity, orders.status,
-              users.fullname AS buyer, products.name AS product
-       FROM orders
-       JOIN users ON orders.buyer_id = users.id
-       JOIN products ON orders.product_id = products.id
-       WHERE products.farmer_id = ?`,
-      [farmer_id]
-    );
-
-    await db.end();
-
-    return NextResponse.json(rows);
   } catch (err) {
-    console.log("FARMER ORDERS ERROR:", err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    console.error("Database error:", err);
+    return NextResponse.json(
+      { 
+        success: false,
+        error: "Failed to fetch orders" 
+      },
+      { status: 500 }
+    );
+  } finally {
+    if (connection) connection.release();
   }
 }

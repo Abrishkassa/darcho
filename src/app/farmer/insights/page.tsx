@@ -148,6 +148,12 @@ export default function FarmerInsightsPage() {
     );
   }
 
+  // Prepare data for Pie chart
+  const pieChartData = insights.stockData.map(item => ({ 
+    name: item.product, 
+    value: item.quantity 
+  }));
+
   return (
     <div className="min-h-screen bg-amber-50 p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
@@ -288,21 +294,24 @@ export default function FarmerInsightsPage() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={insights.stockData}
+                    data={pieChartData}
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                    label={({ percent }) => percent ? `${(percent * 100).toFixed(0)}%` : ''}
                     outerRadius={80}
                     fill="#8884d8"
-                    dataKey="quantity"
+                    dataKey="value"
                   >
-                    {insights.stockData.map((entry, index) => (
+                    {pieChartData.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={STOCK_COLORS[index % STOCK_COLORS.length]} />
                     ))}
                   </Pie>
                   <Tooltip 
-                    formatter={(value, name) => [`${value} kg`, name]}
+                    formatter={(value, name, props) => {
+                      const payload = props.payload as { name: string; value: number };
+                      return [`${value} kg`, payload.name || name];
+                    }}
                   />
                   <Legend />
                 </PieChart>

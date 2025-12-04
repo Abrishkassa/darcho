@@ -1,39 +1,96 @@
 import { NextResponse } from "next/server";
 import mysql from "mysql2/promise";
 
-export async function GET(req: Request) {
+const pool = mysql.createPool({
+  host: "localhost",
+  user: "root",
+  password: " ",
+  database: "darcho",
+  waitForConnections: true,
+  connectionLimit: 10,
+});
+
+export async function GET() {
+  let connection;
   try {
-    const url = new URL(req.url);
-    const farmer_id = url.searchParams.get("farmer_id");
+    connection = await pool.getConnection();
+    
+    // Assuming you have a 'farmers' table
+    const [rows] = await connection.query(`
+      SELECT 
+        id,
+        fullname,
+        phone,
+        email,
+        region,
+        residence,
+        farm_size,
+        years_farming,
+        created_at as joined_date
+      FROM farmers
+      WHERE id = 1 -- Replace with actual farmer ID from session/auth
+      LIMIT 1
+    `);
 
-    if (!farmer_id) {
-      return NextResponse.json(
-        { error: "Missing farmer_id" },
-        { status: 400 }
-      );
-    }
-
-    const db = await mysql.createConnection({
-      host: "localhost",
-      user: "root",
-      password: "",
-      database: "darcho",
+    const profiles = rows as any[];
+    
+    return NextResponse.json({ 
+      success: true,
+      profile: profiles[0] || null 
     });
 
-    const [rows]: any = await db.execute(
-      "SELECT fullname, phone, region, residence FROM users WHERE id = ?",
-      [farmer_id]
-    );
-
-    await db.end();
-
-    if (rows.length === 0) {
-      return NextResponse.json({ error: "Farmer not found" }, { status: 404 });
-    }
-
-    return NextResponse.json(rows[0]);
   } catch (err) {
-    console.log("FARMER PROFILE ERROR:", err);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    console.error("Database error:", err);
+    return NextResponse.json(
+      { 
+        success: false,
+        error: "Failed to fetch profile" 
+      },
+      { status: 500 }
+    );
+  } finally {
+    if (connection) connection.release();
+  }
+}
+
+export async function PUT(request: Request) {
+  let connection;
+  try {
+    const body = await request.json();
+    const { fullname, phone, email, region, residence, farm_size, years_farming } = body;
+
+    connection = await pool.getConnection();
+    
+    // Update farmer profile
+    await connection.query(`
+      UPDATE farmers 
+      SET 
+        fullname = ?,
+        phone = ?,
+        email = ?,
+        region = ?,
+        residence = ?,
+        farm_size = ?,
+        years_farming = ?,
+        updated_at = NOW()
+      WHERE id = 1 -- Replace with actual farmer ID from session/auth
+    `, [fullname, phone, email, region, residence, farm_size, years_farming]);
+
+    return NextResponse.json({ 
+      success: true,
+      message: "Profile updated successfully" 
+    });
+
+  } catch (err) {
+    console.error("Database error:", err);
+    return NextResponse.json(
+      { 
+        success: false,
+        error: "Failed to update profile" 
+      },
+      { status: 500 }
+    );
+  } finally {
+    if (connection) connection.release();
   }
 }
