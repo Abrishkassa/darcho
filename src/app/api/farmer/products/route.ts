@@ -1,6 +1,7 @@
 // app/api/farmer/products/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import mysql from "mysql2/promise";
+export const runtime = 'nodejs';
 
 // GET: Fetch products for authenticated farmer
 export async function GET(request: NextRequest) {
