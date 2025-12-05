@@ -32,7 +32,7 @@ export async function POST(req: Request) {
     // HASH PASSWORD
     const hash = await bcrypt.hash(password, 10);
 
-    // INSERT USER + ROLE ⭐ updated query
+    // INSERT USER + ROLE  updated query
     await db.execute(
       `INSERT INTO users (fullname, phone, email, residence, region, password, role)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
