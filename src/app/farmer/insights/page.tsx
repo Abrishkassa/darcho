@@ -52,10 +52,20 @@ export default function FarmerInsightsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
   const [timeRange, setTimeRange] = useState<"week" | "month" | "quarter" | "year">("month");
+  const [isClient, setIsClient] = useState(false); // 👈 Added for hydration fix
+
+  // Set isClient to true when component mounts on client
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   useEffect(() => {
+    // Only fetch data on client side
+    if (!isClient) return;
+
     async function loadInsights() {
       try {
+        setLoading(true);
         const res = await fetch(`/api/farmer/insights?range=${timeRange}`);
         
         if (!res.ok) {
@@ -82,13 +92,14 @@ export default function FarmerInsightsPage() {
     }
 
     loadInsights();
-  }, [timeRange]);
+  }, [timeRange, isClient]); // 👈 Added isClient dependency
 
-  // Colors for charts
+  // Colors for charts - make them static
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
   const STOCK_COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6'];
 
-  if (loading) {
+  // Don't render anything on server to prevent hydration mismatch
+  if (!isClient || loading) {
     return (
       <div className="min-h-screen bg-amber-50 p-4 md:p-6">
         <div className="max-w-7xl mx-auto">
