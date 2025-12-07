@@ -1,5 +1,9 @@
+// app/api/farmer/products/route.ts
 import { NextResponse } from "next/server";
 import mysql from "mysql2/promise";
+
+// IMPORTANT: Configure runtime to be Node.js
+export const runtime = 'nodejs'; // Add this line
 
 const pool = mysql.createPool({
   host: "localhost",
@@ -10,186 +14,75 @@ const pool = mysql.createPool({
   connectionLimit: 10,
 });
 
-// Get user ID from headers (set by middleware)
-function getUserIdFromHeaders(request: Request): number {
-  const userId = request.headers.get('x-user-id');
-  if (!userId) {
-    throw new Error("User ID not found in request headers");
-  }
-  return parseInt(userId);
-}
-
-// Get farmer ID from headers
-function getFarmerIdFromHeaders(request: Request): number {
-  const farmerId = request.headers.get('x-farmer-id');
-  if (!farmerId) {
-    throw new Error("Farmer ID not found in request headers");
-  }
-  return parseInt(farmerId);
-}
-
-// GET - Fetch all products for the farmer
 export async function GET(request: Request) {
-  let connection;
-  try {
-    // Get IDs from headers (already verified by middleware)
-    const userId = getUserIdFromHeaders(request);
-    const farmerId = getFarmerIdFromHeaders(request);
-
-    console.log(`🌾 Fetching products for farmer_id: ${farmerId} (user_id: ${userId})`);
-    
-    connection = await pool.getConnection();
-    
-    // Fetch products
-    const [rows] = await connection.query(
-      `SELECT * FROM products WHERE farmer_id = ? ORDER BY created_at DESC, id DESC`,
-      [farmerId]
-    );
-    
-    const products = rows as any[];
-    console.log(`✅ Found ${products.length} products for farmer ${farmerId}`);
-    
-    // Format products
-    const formattedProducts = products.map(product => ({
-      id: product.id,
-      farmer_id: product.farmer_id,
-      name: product.name || '',
-      category: product.category || 'Other',
-      price: Number(product.price) || 0,
-      quantity: Number(product.quantity) || 0,
-      unit: product.unit || 'kg',
-      description: product.description || '',
-      image_url: product.image_url || '',
-      created_at: product.created_at
-    }));
-
-    return NextResponse.json({ 
-      success: true,
-      products: formattedProducts
-    });
-
-  } catch (err: any) {
-    console.error("Database error:", err);
-    
-    // Handle authentication errors
-    if (err.message.includes("not found in request headers")) {
-      return NextResponse.json(
-        { 
-          success: false,
-          error: "Authentication required" 
-        },
-        { status: 401 }
-      );
-    }
-    
+  console.log("✅ Farmer products API called (Node.js runtime)");
+  
+  // Get auth header
+  const authHeader = request.headers.get("authorization");
+  
+  if (!authHeader || !authHeader.startsWith("Session ")) {
     return NextResponse.json(
       { 
-        success: false,
-        error: "Failed to fetch products",
-        products: []
+        success: false, 
+        error: "Unauthorized",
+        message: "No valid session found. Please log in."
       },
-      { status: 500 }
+      { status: 401 }
     );
-  } finally {
-    if (connection) connection.release();
   }
-}
 
-// POST - Add a new product
-export async function POST(request: Request) {
-  let connection;
-  try {
-    // Get IDs from headers
-    const userId = getUserIdFromHeaders(request);
-    const farmerId = getFarmerIdFromHeaders(request);
-
-    const body = await request.json();
-    const { 
-      name, 
-      category = 'Other', 
-      price = 0, 
-      quantity = 0, 
-      unit = 'kg', 
-      description = '' 
-    } = body;
-
-    // Validate required fields
-    if (!name || !name.trim()) {
-      return NextResponse.json(
-        { 
-          success: false,
-          error: "Product name is required" 
-        },
-        { status: 400 }
-      );
-    }
-
-    connection = await pool.getConnection();
-    
-    console.log(`➕ Adding product for farmer_id: ${farmerId} (user_id: ${userId})`);
-    
-    // Insert new product
-    const [result] = await connection.query(
-      `INSERT INTO products (
-        farmer_id, name, category, price, quantity, unit, description, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
-      [farmerId, name.trim(), category, Number(price), Number(quantity), unit, description]
-    );
-
-    const productId = (result as any).insertId;
-    
-    // Get the newly created product
-    const [newProductRows] = await connection.query(
-      `SELECT * FROM products WHERE id = ?`,
-      [productId]
-    );
-
-    const newProduct = (newProductRows as any[])[0];
-    
-    // Format response
-    const formattedProduct = {
-      id: newProduct.id,
-      farmer_id: newProduct.farmer_id,
-      name: newProduct.name,
-      category: newProduct.category || 'Other',
-      price: Number(newProduct.price) || 0,
-      quantity: Number(newProduct.quantity) || 0,
-      unit: newProduct.unit || 'kg',
-      description: newProduct.description || '',
-      image_url: newProduct.image_url || '',
-      created_at: newProduct.created_at
-    };
-
-    return NextResponse.json({ 
-      success: true,
-      message: "Product added successfully",
-      product: formattedProduct
-    }, { status: 201 });
-
-  } catch (err: any) {
-    console.error("Database error:", err);
-    
-    // Handle authentication errors
-    if (err.message.includes("not found in request headers")) {
-      return NextResponse.json(
-        { 
-          success: false,
-          error: "Authentication required" 
-        },
-        { status: 401 }
-      );
-    }
-    
-    return NextResponse.json(
-      { 
-        success: false,
-        error: "Failed to add product: " + (err.message || 'Unknown error')
+  const sessionId = authHeader.split(" ")[1];
+  
+  // For testing without DB, return mock data
+  return NextResponse.json({
+    success: true,
+    message: "Products API is working!",
+    products: [
+      {
+        id: 1,
+        name: "Organic Coffee Beans",
+        quantity: 50,
+        price: 2500,
+        category: "Coffee",
+        description: "Premium organic coffee beans",
+        unit: "kg",
+        status: "available",
+        created_at: new Date().toISOString()
       },
-      { status: 500 }
-    );
-  } finally {
-    if (connection) connection.release();
-  }
+      {
+        id: 2,
+        name: "Fresh Milk",
+        quantity: 30,
+        price: 1200,
+        category: "Dairy",
+        description: "Fresh milk from grass-fed cows",
+        unit: "liter",
+        status: "available",
+        created_at: new Date().toISOString()
+      },
+      {
+        id: 3,
+        name: "Organic Eggs",
+        quantity: 100,
+        price: 300,
+        category: "Poultry",
+        description: "Farm fresh organic eggs",
+        unit: "piece",
+        status: "available",
+        created_at: new Date().toISOString()
+      }
+    ],
+    stats: {
+      farmer_id: 1,
+      product_count: 3,
+      total_quantity: 180,
+      total_value: 164000
+    },
+    debug: {
+      runtime: "nodejs",
+      has_auth: !!authHeader,
+      session_length: sessionId?.length || 0,
+      timestamp: new Date().toISOString()
+    }
+  });
 }
-
-// Similar updates for PUT and DELETE methods...
