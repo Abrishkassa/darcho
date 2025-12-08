@@ -44,7 +44,7 @@ export default function FarmerPortal() {
   const stats = [
     { label: "Total Products", value: "8", change: "+2", trend: "up", icon: Package, color: "blue" },
     { label: "Active Orders", value: "5", change: "+1", trend: "up", icon: ShoppingBag, color: "emerald" },
-    { label: "Monthly Revenue", value: "₮ 42,500", change: "+15%", trend: "up", icon: DollarSign, color: "amber" },
+    { label: "Monthly Revenue", value: "ETB 42,500", change: "+15%", trend: "up", icon: DollarSign, color: "amber" },
     { label: "Customer Rating", value: "4.8", change: "+0.2", trend: "up", icon: Star, color: "purple" },
   ];
 
@@ -54,7 +54,7 @@ export default function FarmerPortal() {
       name: "Yirgacheffe AA Premium",
       grade: "AA",
       quantity: "45 kg",
-      price: "₮ 2,800/kg",
+      price: "ETB 2,800/kg",
       status: "available",
       certification: ["Organic", "Fair Trade"],
       origin: "Yirgacheffe, Ethiopia",
@@ -66,7 +66,7 @@ export default function FarmerPortal() {
       name: "Sidamo Natural Process",
       grade: "A",
       quantity: "32 kg",
-      price: "₮ 2,400/kg",
+      price: "ETB 2,400/kg",
       status: "available",
       certification: ["Organic"],
       origin: "Sidamo, Ethiopia",
@@ -78,7 +78,7 @@ export default function FarmerPortal() {
       name: "Harar Longberry",
       grade: "Longberry",
       quantity: "28 kg",
-      price: "₮ 3,200/kg",
+      price: "ETB 3,200/kg",
       status: "low_stock",
       certification: ["Fair Trade", "Rainforest Alliance"],
       origin: "Harar, Ethiopia",
@@ -90,7 +90,7 @@ export default function FarmerPortal() {
       name: "Limu Washed",
       grade: "B",
       quantity: "52 kg",
-      price: "₮ 2,600/kg",
+      price: "ETB 2,600/kg",
       status: "available",
       certification: ["Organic", "Bird Friendly"],
       origin: "Limu, Ethiopia",
@@ -105,7 +105,7 @@ export default function FarmerPortal() {
       buyer: "Selam Desta",
       product: "Yirgacheffe AA",
       quantity: "10 kg",
-      total: "₮ 28,000",
+      total: "ETB 28,000",
       status: "confirmed",
       date: "2024-01-15",
       delivery: "Pending"
@@ -115,7 +115,7 @@ export default function FarmerPortal() {
       buyer: "Global Exports",
       product: "Sidamo Natural",
       quantity: "25 kg",
-      total: "₮ 60,000",
+      total: "ETB 60,000",
       status: "processing",
       date: "2024-01-14",
       delivery: "Scheduled"
@@ -125,7 +125,7 @@ export default function FarmerPortal() {
       buyer: "Cafe Addis",
       product: "Harar Longberry",
       quantity: "8 kg",
-      total: "₮ 25,600",
+      total: "ETB 25,600",
       status: "shipped",
       date: "2024-01-13",
       delivery: "In Transit"
@@ -135,7 +135,7 @@ export default function FarmerPortal() {
       buyer: "Bean Traders",
       product: "Limu Washed",
       quantity: "15 kg",
-      total: "₮ 39,000",
+      total: "ETB 39,000",
       status: "delivered",
       date: "2024-01-12",
       delivery: "Completed"
@@ -144,15 +144,15 @@ export default function FarmerPortal() {
 
   const insights = [
     { label: "Best Selling Product", value: "Yirgacheffe AA", change: "+24%", icon: TrendingUp },
-    { label: "Avg. Order Value", value: "₮ 38,150", change: "+8%", icon: DollarSign },
+    { label: "Avg. Order Value", value: "ETB 38,150", change: "+8%", icon: DollarSign },
     { label: "Customer Retention", value: "92%", change: "+5%", icon: Users },
     { label: "Stock Turnover", value: "3.2x", change: "+0.4", icon: Package },
   ];
 
   const farmerProfile = {
     name: "Abriham Kassa",
-    phone: "+251 912 345 678",
-    email: "abriham@greenvalleyfarm.com",
+    phone: "+251 972 590 743",
+    email: "abrihamkassa323@gmial.com",
     region: "Oromia",
     residence: "Addis Ababa",
     farmName: "Green Valley Farm",
@@ -528,7 +528,7 @@ export default function FarmerPortal() {
                 { label: "Total Orders", value: "24", icon: ShoppingBag, color: "blue" },
                 { label: "This Month", value: "5", icon: Calendar, color: "emerald" },
                 { label: "Pending", value: "2", icon: Clock, color: "amber" },
-                { label: "Revenue", value: "₮ 152,600", icon: DollarSign, color: "purple" },
+                { label: "Revenue", value: "ETB 152,600", icon: DollarSign, color: "purple" },
               ].map((stat, index) => (
                 <motion.div
                   key={stat.label}

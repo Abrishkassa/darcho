@@ -61,17 +61,17 @@ export default function BuyerDashboard() {
   ];
 
   const recentOrders = [
-    { id: "ORD-2024-015", product: "Yirgacheffe AA", farmer: "Abriham", status: "delivered", amount: "₮ 28,000", date: "2 days ago" },
-    { id: "ORD-2024-014", product: "Sidamo Natural", farmer: "Selam", status: "shipped", amount: "₮ 12,000", date: "3 days ago" },
-    { id: "ORD-2024-013", product: "Harar Longberry", farmer: "Mikael", status: "processing", amount: "₮ 9,600", date: "5 days ago" },
-    { id: "ORD-2024-012", product: "Limu Washed", farmer: "Helen", status: "delivered", amount: "₮ 15,600", date: "1 week ago" },
+    { id: "ORD-2024-015", product: "Yirgacheffe AA", farmer: "Abriham", status: "delivered", amount: "ETB 28,000", date: "2 days ago" },
+    { id: "ORD-2024-014", product: "Sidamo Natural", farmer: "Selam", status: "shipped", amount: "ETB 12,000", date: "3 days ago" },
+    { id: "ORD-2024-013", product: "Harar Longberry", farmer: "Mikael", status: "processing", amount: "ETB 9,600", date: "5 days ago" },
+    { id: "ORD-2024-012", product: "Limu Washed", farmer: "Helen", status: "delivered", amount: "ETB 15,600", date: "1 week ago" },
   ];
 
   const recommendedProducts = [
-    { id: 1, name: "Guij Coffee AA", farmer: "Daniel", price: "₮ 2,900/kg", rating: 4.5, stock: "Low" },
-    { id: 2, name: "Kochere Natural", farmer: "Ruth", price: "₮ 3,000/kg", rating: 4.9, stock: "Limited" },
-    { id: 3, name: "Wollega Organic", farmer: "Samuel", price: "₮ 2,700/kg", rating: 4.3, stock: "High" },
-    { id: 4, name: "Jimma Grade A", farmer: "Martha", price: "₮ 2,500/kg", rating: 4.2, stock: "Medium" },
+    { id: 1, name: "Guij Coffee AA", farmer: "Daniel", price: "ETB 2,900/kg", rating: 4.5, stock: "Low" },
+    { id: 2, name: "Kochere Natural", farmer: "Ruth", price: "ETB 3,000/kg", rating: 4.9, stock: "Limited" },
+    { id: 3, name: "Wollega Organic", farmer: "Samuel", price: "ETB 2,700/kg", rating: 4.3, stock: "High" },
+    { id: 4, name: "Jimma Grade A", farmer: "Martha", price: "ETB 2,500/kg", rating: 4.2, stock: "Medium" },
   ];
 
   const tabs = [
@@ -367,9 +367,9 @@ export default function BuyerDashboard() {
               <h2 className={`text-2xl font-bold mb-6 ${darkMode ? "text-white" : "text-gray-900"}`}>Your Cart</h2>
               <div className="space-y-4">
                 {[
-                  { name: "Yirgacheffe AA", price: "₮ 28,000", quantity: "10kg" },
-                  { name: "Sidamo Natural", price: "₮ 12,000", quantity: "5kg" },
-                  { name: "Harar Longberry", price: "₮ 9,600", quantity: "3kg" },
+                  { name: "Yirgacheffe AA", price: "ETB 28,000", quantity: "10kg" },
+                  { name: "Sidamo Natural", price: "ETB 12,000", quantity: "5kg" },
+                  { name: "Harar Longberry", price: "ETB 9,600", quantity: "3kg" },
                 ].map((item, index) => (
                   <div key={index} className={`flex items-center justify-between p-4 rounded-xl border ${
                     darkMode 

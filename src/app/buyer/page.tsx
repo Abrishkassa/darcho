@@ -46,7 +46,7 @@ export default function BuyerPortal() {
       name: "Yirgacheffe AA Premium",
       farmer: "Abriham Kassa",
       origin: "Yirgacheffe, Ethiopia",
-      price: "₮ 2,800",
+      price: "ETB 2,800",
       unit: "kg",
       rating: 4.9,
       reviews: 124,
@@ -61,7 +61,7 @@ export default function BuyerPortal() {
       name: "Sidamo Natural Process",
       farmer: "Selam Desta",
       origin: "Sidamo, Ethiopia",
-      price: "₮ 2,400",
+      price: "ETB 2,400",
       unit: "kg",
       rating: 4.7,
       reviews: 89,
@@ -76,7 +76,7 @@ export default function BuyerPortal() {
       name: "Harar Longberry",
       farmer: "Mikael Assefa",
       origin: "Harar, Ethiopia",
-      price: "₮ 3,200",
+      price: "ETB 3,200",
       unit: "kg",
       rating: 4.8,
       reviews: 167,
@@ -91,7 +91,7 @@ export default function BuyerPortal() {
       name: "Limu Washed",
       farmer: "Helen Tesfaye",
       origin: "Limu, Ethiopia",
-      price: "₮ 2,600",
+      price: "ETB 2,600",
       unit: "kg",
       rating: 4.6,
       reviews: 76,
@@ -106,7 +106,7 @@ export default function BuyerPortal() {
       name: "Guij Coffee Beans",
       farmer: "Daniel Solomon",
       origin: "Guij, Ethiopia",
-      price: "₮ 2,900",
+      price: "ETB 2,900",
       unit: "kg",
       rating: 4.5,
       reviews: 63,
@@ -121,7 +121,7 @@ export default function BuyerPortal() {
       name: "Kochere Natural",
       farmer: "Ruth Bekele",
       origin: "Kochere, Ethiopia",
-      price: "₮ 3,000",
+      price: "ETB 3,000",
       unit: "kg",
       rating: 4.9,
       reviews: 142,
@@ -160,16 +160,16 @@ export default function BuyerPortal() {
   ];
 
   const cartProducts = [
-    { id: 1, name: "Yirgacheffe AA", farmer: "Abriham", quantity: 10, price: "₮ 28,000", unit: "kg" },
-    { id: 2, name: "Sidamo Natural", farmer: "Selam", quantity: 5, price: "₮ 12,000", unit: "kg" },
-    { id: 3, name: "Harar Longberry", farmer: "Mikael", quantity: 3, price: "₮ 9,600", unit: "kg" },
+    { id: 1, name: "Yirgacheffe AA", farmer: "Abriham", quantity: 10, price: "ETB 28,000", unit: "kg" },
+    { id: 2, name: "Sidamo Natural", farmer: "Selam", quantity: 5, price: "ETB 12,000", unit: "kg" },
+    { id: 3, name: "Harar Longberry", farmer: "Mikael", quantity: 3, price: "ETB 9,600", unit: "kg" },
   ];
 
   const orders = [
-    { id: "ORD-2024-001", date: "Jan 15, 2024", items: 2, total: "₮ 40,000", status: "delivered" },
-    { id: "ORD-2024-002", date: "Jan 12, 2024", items: 1, total: "₮ 28,000", status: "shipped" },
-    { id: "ORD-2024-003", date: "Jan 10, 2024", items: 3, total: "₮ 67,500", status: "processing" },
-    { id: "ORD-2024-004", date: "Jan 8, 2024", items: 2, total: "₮ 52,000", status: "delivered" },
+    { id: "ORD-2024-001", date: "Jan 15, 2024", items: 2, total: "ETB 40,000", status: "delivered" },
+    { id: "ORD-2024-002", date: "Jan 12, 2024", items: 1, total: "ETB 28,000", status: "shipped" },
+    { id: "ORD-2024-003", date: "Jan 10, 2024", items: 3, total: "ETB 67,500", status: "processing" },
+    { id: "ORD-2024-004", date: "Jan 8, 2024", items: 2, total: "ETB 52,000", status: "delivered" },
   ];
 
   const themeClass = darkMode 
@@ -457,7 +457,7 @@ export default function BuyerPortal() {
                   </p>
                 </div>
                 <div className="text-right">
-                  <div className="text-3xl font-bold text-amber-500">₮ 49,600</div>
+                  <div className="text-3xl font-bold text-amber-500">ETB 49,600</div>
                   <p className={darkMode ? "text-gray-400" : "text-gray-600"}>Total amount</p>
                 </div>
               </div>
