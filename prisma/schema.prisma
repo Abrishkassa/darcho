@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,4 +5,190 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+model User {
+  id              Int       @id @default(autoincrement())
+  email           String    @unique
+  phone           String    @unique
+  passwordHash    String    @map("password_hash")
+  role            String    // farmer, buyer, admin
+  fullName        String    @map("full_name")
+  isVerified      Boolean   @default(false) @map("is_verified")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @default(now()) @map("updated_at")
+  
+  // Relations
+  farmer          Farmer?
+  buyer           Buyer?
+  sentMessages    Message[] @relation("SentMessages")
+  receivedMessages Message[] @relation("ReceivedMessages")
+  reviewsGiven    Review[]  @relation("ReviewsGiven")
+  reviewsReceived Review[]  @relation("ReviewsReceived")
+  
+  @@map("users")
+}
+
+model Farmer {
+  id                Int       @id @default(autoincrement())
+  userId            Int       @unique @map("user_id")
+  farmName          String?   @map("farm_name")
+  region            String
+  residence         String
+  farmSize          String?   @map("farm_size")
+  yearsFarming      Int?      @map("years_farming")
+  certifications    String[]
+  joinDate          DateTime  @default(now()) @map("join_date")
+  totalHarvests     Int       @default(0) @map("total_harvests")
+  avgRating         Float     @default(0) @map("avg_rating")
+  responseTimeHours Int?      @map("response_time_hours")
+  profileImageUrl   String?   @map("profile_image_url")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @default(now()) @map("updated_at")
+  
+  // Relations
+  user              User      @relation(fields: [userId], references: [id])
+  products          Product[]
+  orders            Order[]
+  analytics         AnalyticsCache[]
+  
+  @@map("farmers")
+}
+
+model Buyer {
+  id                     Int       @id @default(autoincrement())
+  userId                 Int       @unique @map("user_id")
+  companyName            String?   @map("company_name")
+  businessType           String?   @map("business_type")
+  location               String?
+  buyerType              String?   @map("buyer_type")
+  website                String?
+  taxId                  String?   @map("tax_id")
+  annualPurchaseCapacity Float?    @map("annual_purchase_capacity")
+  preferredRegions       String[]
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @default(now()) @map("updated_at")
+  
+  // Relations
+  user                   User      @relation(fields: [userId], references: [id])
+  orders                 Order[]
+  
+  @@map("buyers")
+}
+
+model Product {
+  id               Int      @id @default(autoincrement())
+  farmerId         Int      @map("farmer_id")
+  name             String
+  grade            String
+  category         String
+  quantity         Float
+  unit             String   @default("kg")
+  pricePerUnit     Float    @map("price_per_unit")
+  description      String?
+  originRegion     String   @map("origin_region")
+  altitude         String?
+  harvestDate      DateTime? @map("harvest_date")
+  processingMethod String?  @map("processing_method")
+  certifications   String[]
+  moistureContent  Float?   @map("moisture_content")
+  beanSize         String?  @map("bean_size")
+  cuppingScore     Float?   @map("cupping_score")
+  imageUrls        String[] @map("image_urls")
+  status           String   @default("available")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @default(now()) @map("updated_at")
+  
+  // Relations
+  farmer           Farmer   @relation(fields: [farmerId], references: [id])
+  orders           Order[]
+  
+  @@map("products")
+}
+
+model Order {
+  id              Int       @id @default(autoincrement())
+  orderNumber     String    @unique @map("order_number")
+  productId       Int?      @map("product_id")
+  buyerId         Int       @map("buyer_id")
+  farmerId        Int       @map("farmer_id")
+  quantity        Float
+  unitPrice       Float     @map("unit_price")
+  totalPrice      Float     @map("total_price")
+  status          String    @default("pending")
+  deliveryStatus  String    @default("pending") @map("delivery_status")
+  notes           String?
+  orderDate       DateTime  @default(now()) @map("order_date")
+  confirmedDate   DateTime? @map("confirmed_date")
+  shippedDate     DateTime? @map("shipped_date")
+  deliveredDate   DateTime? @map("delivered_date")
+  shippingAddress String?   @map("shipping_address")
+  paymentMethod   String?   @map("payment_method")
+  paymentStatus   String    @default("pending") @map("payment_status")
+  escrowReleased  Boolean   @default(false) @map("escrow_released")
+  
+  // Relations
+  product         Product?  @relation(fields: [productId], references: [id])
+  buyer           Buyer     @relation(fields: [buyerId], references: [id])
+  farmer          Farmer    @relation(fields: [farmerId], references: [id])
+  messages        Message[]
+  review          Review?
+  
+  @@map("orders")
+}
+
+model Message {
+  id          Int      @id @default(autoincrement())
+  senderId    Int      @map("sender_id")
+  receiverId  Int      @map("receiver_id")
+  orderId     Int?     @map("order_id")
+  message     String
+  isRead      Boolean  @default(false) @map("is_read")
+  createdAt   DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  sender      User     @relation("SentMessages", fields: [senderId], references: [id])
+  receiver    User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  order       Order?   @relation(fields: [orderId], references: [id])
+  
+  @@map("messages")
+}
+
+model Review {
+  id          Int      @id @default(autoincrement())
+  orderId     Int      @unique @map("order_id")
+  reviewerId  Int      @map("reviewer_id")
+  reviewedId  Int      @map("reviewed_id")
+  rating      Int
+  comment     String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  order       Order    @relation(fields: [orderId], references: [id])
+  reviewer    User     @relation("ReviewsGiven", fields: [reviewerId], references: [id])
+  reviewed    User     @relation("ReviewsReceived", fields: [reviewedId], references: [id])
+  
+  @@map("reviews")
+}
+
+model AnalyticsCache {
+  id                Int      @id @default(autoincrement())
+  farmerId          Int      @map("farmer_id")
+  periodType        String   @map("period_type")
+  periodStart       DateTime @map("period_start")
+  periodEnd         DateTime @map("period_end")
+  totalRevenue      Float    @default(0) @map("total_revenue")
+  totalOrders       Int      @default(0) @map("total_orders")
+  avgOrderValue     Float    @default(0) @map("avg_order_value")
+  growthRate        Float    @default(0) @map("growth_rate")
+  topProducts       Json
+  lowStockItems     Int      @default(0) @map("low_stock_items")
+  totalStockValue   Float    @default(0) @map("total_stock_value")
+  calculatedAt      DateTime @default(now()) @map("calculated_at")
+  
+  // Relations
+  farmer            Farmer   @relation(fields: [farmerId], references: [id])
+  
+  @@unique([farmerId, periodType, periodStart])
+  @@map("analytics_cache")
 }
