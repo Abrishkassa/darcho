@@ -1,88 +1,124 @@
-// app/api/farmer/products/route.ts
-import { NextResponse } from "next/server";
-import mysql from "mysql2/promise";
+import { NextRequest, NextResponse } from 'next/server';
+import prisma from '@/app/lib/prisma';
 
-// IMPORTANT: Configure runtime to be Node.js
-export const runtime = 'nodejs'; // Add this line
-
-const pool = mysql.createPool({
-  host: "localhost",
-  user: "root",
-  password: "",
-  database: "darcho",
-  waitForConnections: true,
-  connectionLimit: 10,
-});
-
-export async function GET(request: Request) {
-  console.log("✅ Farmer products API called (Node.js runtime)");
-  
-  // Get auth header
-  const authHeader = request.headers.get("authorization");
-  
-  if (!authHeader || !authHeader.startsWith("Session ")) {
+// GET /api/farmer/products - Get farmer's products
+export async function GET(request: NextRequest) {
+  try {
+    // Extract farmer ID from session (we'll implement auth later)
+    // For now, get farmer ID from query params or first farmer in DB
+    const searchParams = request.nextUrl.searchParams;
+    const farmerId = searchParams.get('farmerId');
+    
+    let farmer;
+    
+    if (farmerId) {
+      farmer = await prisma.farmer.findUnique({
+        where: { id: parseInt(farmerId) },
+        include: { products: true },
+      });
+    } else {
+      // Get first farmer for testing
+      farmer = await prisma.farmer.findFirst({
+        include: { 
+          products: {
+            orderBy: { createdAt: 'desc' }
+          } 
+        },
+      });
+    }
+    
+    if (!farmer) {
+      return NextResponse.json(
+        { success: false, error: 'Farmer not found' },
+        { status: 404 }
+      );
+    }
+    
+    // Calculate stats
+    const totalQuantity = farmer.products.reduce((sum, product) => sum + product.quantity, 0);
+    const totalValue = farmer.products.reduce(
+      (sum, product) => sum + (product.quantity * product.pricePerUnit), 
+      0
+    );
+    
+    return NextResponse.json({
+      success: true,
+      products: farmer.products,
+      stats: {
+        total_quantity: totalQuantity,
+        product_count: farmer.products.length,
+        farmer_id: farmer.id,
+        total_value: totalValue,
+      },
+    });
+    
+  } catch (error: any) {
+    console.error('Error fetching farmer products:', error);
     return NextResponse.json(
       { 
         success: false, 
-        error: "Unauthorized",
-        message: "No valid session found. Please log in."
+        error: error.message,
+        debug: process.env.NODE_ENV === 'development' ? error.stack : undefined 
       },
-      { status: 401 }
+      { status: 500 }
     );
   }
+}
 
-  const sessionId = authHeader.split(" ")[1];
-  
-  // For testing without DB, return mock data
-  return NextResponse.json({
-    success: true,
-    message: "Products API is working!",
-    products: [
-      {
-        id: 1,
-        name: "Organic Coffee Beans",
-        quantity: 50,
-        price: 2500,
-        category: "Coffee",
-        description: "Premium organic coffee beans",
-        unit: "kg",
-        status: "available",
-        created_at: new Date().toISOString()
-      },
-      {
-        id: 2,
-        name: "Fresh Milk",
-        quantity: 30,
-        price: 1200,
-        category: "Dairy",
-        description: "Fresh milk from grass-fed cows",
-        unit: "liter",
-        status: "available",
-        created_at: new Date().toISOString()
-      },
-      {
-        id: 3,
-        name: "Organic Eggs",
-        quantity: 100,
-        price: 300,
-        category: "Poultry",
-        description: "Farm fresh organic eggs",
-        unit: "piece",
-        status: "available",
-        created_at: new Date().toISOString()
-      }
-    ],
-    stats: {
-      farmer_id: 1,
-      product_count: 3,
-      total_quantity: 180,
-      total_value: 164000
-    },
-    debug: {
-      runtime: "nodejs",
-      has_auth: !!authHeader,
-      session_length: sessionId?.length || 0,
-      timestamp: new Date().toISOString()
+// POST /api/farmer/products - Add new product
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    
+    // Validate required fields
+    const requiredFields = ['farmerId', 'name', 'grade', 'category', 'quantity', 'pricePerUnit', 'originRegion'];
+    const missingFields = requiredFields.filter(field => !body[field]);
+    
+    if (missingFields.length > 0) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: `Missing required fields: ${missingFields.join(', ')}` 
+        },
+        { status: 400 }
+      );
     }
-  });
+    
+    // Create product
+    const product = await prisma.product.create({
+      data: {
+        farmerId: parseInt(body.farmerId),
+        name: body.name,
+        grade: body.grade,
+        category: body.category,
+        quantity: parseFloat(body.quantity),
+        unit: body.unit || 'kg',
+        pricePerUnit: parseFloat(body.pricePerUnit),
+        description: body.description,
+        originRegion: body.originRegion,
+        altitude: body.altitude,
+        harvestDate: body.harvestDate ? new Date(body.harvestDate) : null,
+        processingMethod: body.processingMethod,
+        certifications: body.certifications || [],
+        moistureContent: body.moistureContent ? parseFloat(body.moistureContent) : null,
+        beanSize: body.beanSize,
+        cuppingScore: body.cuppingScore ? parseFloat(body.cuppingScore) : null,
+        imageUrls: body.imageUrls || [],
+        status: 'available',
+      },
+    });
+    
+    return NextResponse.json({
+      success: true,
+      message: 'Product created successfully',
+      product,
+    }, { status: 201 });
+    
+  } catch (error: any) {
+    console.error('Error creating product:', error);
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
+  }
 }
