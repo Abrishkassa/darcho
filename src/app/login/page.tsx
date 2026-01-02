@@ -1,11 +1,10 @@
-// app/login/page.tsx
 "use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
-  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState(""); // Changed from phone to email
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -16,37 +15,44 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
-    const cleanPhone = phone.replace(/\D/g, '');
-    if (cleanPhone.length < 10) {
-      setError("Please enter a valid phone number (at least 10 digits)");
+    // Validate email
+    if (!email || !email.includes('@')) {
+      setError("Please enter a valid email address");
       setLoading(false);
       return;
     }
 
     try {
-      const response = await fetch("/api/login", {
+      const response = await fetch("/api/auth/login", { // Updated endpoint
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ phone, password }),
+        body: JSON.stringify({ email, password }), // Send email not phone
       });
 
       const data = await response.json();
 
       if (data.success) {
-        localStorage.setItem("session_id", data.session.id);
-        localStorage.setItem("user_id", data.user.id);
-        localStorage.setItem("farmer_id", data.farmer?.id || "");
-        localStorage.setItem("user_phone", data.user.phone);
+        // Store session data - UPDATED STRUCTURE
+        localStorage.setItem("session_id", data.session.session_id); // Changed from data.session.id
+        localStorage.setItem("auth_header", data.session.auth_header);
+        localStorage.setItem("user_id", data.user.id.toString());
         localStorage.setItem("user_role", data.user.role);
+        localStorage.setItem("user_email", data.user.email);
+        localStorage.setItem("user_fullname", data.user.fullName);
         
-        sessionStorage.setItem("user", JSON.stringify(data.user));
-        sessionStorage.setItem("farmer", JSON.stringify(data.farmer));
-        localStorage.setItem("auth_header", data.auth_header);
+        // Store farmer/buyer specific ID
+        if (data.user.role === "farmer" && data.user.farmer_id) {
+          localStorage.setItem("farmer_id", data.user.farmer_id.toString());
+        }
+        if (data.user.role === "buyer" && data.user.buyer_id) {
+          localStorage.setItem("buyer_id", data.user.buyer_id.toString());
+        }
 
+        // Redirect based on role
         if (data.user.role === "farmer") {
-          router.push("/farmer/profile");
+          router.push("/farmer");
         } else if (data.user.role === "buyer") {
           router.push("/buyer/dashboard");
         } else if (data.user.role === "admin") {
@@ -57,7 +63,7 @@ export default function LoginPage() {
         
         router.refresh();
       } else {
-        setError(data.error || "Login failed");
+        setError(data.error || "Login failed. Please check your credentials.");
       }
     } catch (err: any) {
       setError(err.message || "An error occurred during login");
@@ -67,16 +73,56 @@ export default function LoginPage() {
     }
   };
 
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let value = e.target.value.replace(/\D/g, '');
+  // Test login function for development
+  const handleTestLogin = async (role: 'farmer' | 'buyer') => {
+    setLoading(true);
+    setError("");
     
-    if (value.length > 3 && value.length <= 6) {
-      value = `(${value.slice(0, 3)}) ${value.slice(3)}`;
-    } else if (value.length > 6) {
-      value = `(${value.slice(0, 3)}) ${value.slice(3, 6)}-${value.slice(6, 10)}`;
+    try {
+      const testCredentials = role === 'farmer' 
+        ? { email: 'farmer@darcho.com', password: 'farmer123' }
+        : { email: 'buyer@darcho.com', password: 'buyer123' };
+      
+      setEmail(testCredentials.email);
+      setPassword(testCredentials.password);
+      
+      // Simulate typing delay
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(testCredentials),
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        // Store session data
+        localStorage.setItem("session_id", data.session.session_id);
+        localStorage.setItem("auth_header", data.session.auth_header);
+        localStorage.setItem("user_id", data.user.id.toString());
+        localStorage.setItem("user_role", data.user.role);
+        localStorage.setItem("user_email", data.user.email);
+        localStorage.setItem("user_fullname", data.user.fullName);
+        
+        if (data.user.role === "farmer" && data.user.farmer_id) {
+          localStorage.setItem("farmer_id", data.user.farmer_id.toString());
+        }
+        
+        router.push("/farmer");
+        router.refresh();
+      } else {
+        setError(data.error || `Test ${role} login failed`);
+      }
+    } catch (err: any) {
+      setError("Test login error. Make sure backend is running.");
+      console.error("Test login error:", err);
+    } finally {
+      setLoading(false);
     }
-    
-    setPhone(value);
   };
 
   return (
@@ -93,8 +139,8 @@ export default function LoginPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
             </svg>
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back</h1>
-          <p className="text-gray-600">Sign in to your account to continue</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome to Darcho</h1>
+          <p className="text-gray-600">Direct farmer-buyer coffee marketplace</p>
         </div>
 
         {/* Login Card */}
@@ -108,28 +154,52 @@ export default function LoginPage() {
             </div>
           )}
 
+          {/* Test Login Buttons (Development Only) */}
+          {process.env.NODE_ENV === 'development' && (
+            <div className="mb-6 space-y-3">
+              <p className="text-sm text-gray-600 text-center">Test Accounts:</p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleTestLogin('farmer')}
+                  disabled={loading}
+                  className="flex-1 py-2 px-4 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+                >
+                  Login as Farmer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTestLogin('buyer')}
+                  disabled={loading}
+                  className="flex-1 py-2 px-4 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+                >
+                  Login as Buyer
+                </button>
+              </div>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-1">
-              <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
-                Phone Number
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                Email Address
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"></path>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"></path>
                   </svg>
                 </div>
                 <input
-                  id="phone"
-                  name="phone"
-                  type="tel"
+                  id="email"
+                  name="email"
+                  type="email"
                   required
-                  value={phone}
-                  onChange={handlePhoneChange}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="block w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent focus:outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50/50"
-                  placeholder="(123) 456-7890"
+                  placeholder="farmer@example.com"
                   disabled={loading}
-                  maxLength={14}
                 />
               </div>
             </div>
@@ -200,7 +270,7 @@ export default function LoginPage() {
         {/* Footer */}
         <div className="mt-8 text-center">
           <p className="text-gray-500 text-sm">
-            © {new Date().getFullYear()} Your Company. All rights reserved.
+            © {new Date().getFullYear()} Darcho - Coffee Marketplace. All rights reserved.
           </p>
           <div className="mt-4 flex items-center justify-center space-x-4">
             <a href="/privacy" className="text-gray-500 hover:text-gray-700 text-sm transition-colors duration-200">
