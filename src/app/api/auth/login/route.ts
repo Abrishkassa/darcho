@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 import prisma from '@/app/lib/prisma';
 import bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
@@ -7,39 +7,77 @@ export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password } = await request.json();
+    const body = await request.json();
+    const { email, phone, password } = body; // Accept both email and phone
+
+    if (!password || (!email && !phone)) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: "Email/phone and password are required" 
+        },
+        { status: 400 }
+      );
+    }
+
+    let user;
     
-    // Find user
-    const user = await prisma.user.findUnique({
-      where: { email },
-      include: {
-        farmer: true,
-        buyer: true,
-      },
-    });
-    
+    // Find user by email OR phone
+    if (email) {
+      user = await prisma.user.findUnique({
+        where: { email },
+        include: {
+          farmer: true,
+          buyer: true,
+        },
+      });
+    } else if (phone) {
+      // Clean phone number for search
+      const cleanPhone = phone.replace(/\D/g, '');
+      
+      user = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { phone: cleanPhone },
+            { phone: { contains: cleanPhone } },
+            { phone: { contains: phone } }
+          ]
+        },
+        include: {
+          farmer: true,
+          buyer: true,
+        },
+      });
+    }
+
     if (!user) {
       return NextResponse.json(
-        { success: false, error: 'Invalid credentials' },
+        { 
+          success: false, 
+          error: "Invalid email/phone or password" 
+        },
         { status: 401 }
       );
     }
+
+    // Verify password
+    const passwordValid = await bcrypt.compare(password, user.passwordHash);
     
-    // Check password
-    const isValid = await bcrypt.compare(password, user.passwordHash);
-    
-    if (!isValid) {
+    if (!passwordValid) {
       return NextResponse.json(
-        { success: false, error: 'Invalid credentials' },
+        { 
+          success: false, 
+          error: "Invalid email/phone or password" 
+        },
         { status: 401 }
       );
     }
-    
-    // Create session
+
+    // Generate session
     const sessionId = randomBytes(32).toString('hex');
     const authHeader = `Session ${sessionId}`;
-    
-    // Return user data
+
+    // Prepare response data
     const responseData = {
       success: true,
       user: {
@@ -51,38 +89,49 @@ export async function POST(request: NextRequest) {
         isVerified: user.isVerified,
       },
       session: {
-        session_id: sessionId,
+        id: sessionId, // Keep 'id' for backward compatibility
+        session_id: sessionId, // Add new format
         auth_header: authHeader,
       },
     };
-    
+
     // Add farmer/buyer specific data
     if (user.role === 'farmer' && user.farmer) {
+      (responseData.user as any).farmer = {
+        id: user.farmer.id,
+        farmName: user.farmer.farmName,
+        region: user.farmer.region,
+      };
       (responseData.user as any).farmer_id = user.farmer.id;
-      (responseData.user as any).farm_name = user.farmer.farmName;
     }
-    
+
     if (user.role === 'buyer' && user.buyer) {
+      (responseData.user as any).buyer = {
+        id: user.buyer.id,
+        companyName: user.buyer.companyName,
+      };
       (responseData.user as any).buyer_id = user.buyer.id;
-      (responseData.user as any).company_name = user.buyer.companyName;
     }
-    
+
     const response = NextResponse.json(responseData);
-    
-    // Set cookie
+
+    // Set session cookie
     response.cookies.set('session_id', sessionId, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      sameSite: 'lax',
       maxAge: 60 * 60 * 24 * 7, // 1 week
     });
-    
+
     return response;
-    
+
   } catch (error: any) {
-    console.error('Login error:', error);
+    console.error("Login error:", error);
     return NextResponse.json(
-      { success: false, error: error.message },
+      { 
+        success: false, 
+        error: error.message || "Internal server error" 
+      },
       { status: 500 }
     );
   }
