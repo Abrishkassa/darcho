@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/app/lib/prisma';
 
-// GET /api/farmer/products - Get farmer's products
+export const runtime = 'nodejs';
+
 export async function GET(request: NextRequest) {
   try {
-    // Extract farmer ID from session (we'll implement auth later)
-    // For now, get farmer ID from query params or first farmer in DB
+    console.log('📡 Fetching farmer products...');
+    
+    // Get farmer ID from query params or use first farmer
     const searchParams = request.nextUrl.searchParams;
     const farmerId = searchParams.get('farmerId');
     
@@ -14,7 +16,11 @@ export async function GET(request: NextRequest) {
     if (farmerId) {
       farmer = await prisma.farmer.findUnique({
         where: { id: parseInt(farmerId) },
-        include: { products: true },
+        include: { 
+          products: {
+            orderBy: { createdAt: 'desc' }
+          } 
+        },
       });
     } else {
       // Get first farmer for testing
@@ -29,49 +35,85 @@ export async function GET(request: NextRequest) {
     
     if (!farmer) {
       return NextResponse.json(
-        { success: false, error: 'Farmer not found' },
-        { status: 404 }
+        { 
+          success: false, 
+          error: 'No farmer found',
+          products: [],
+          stats: {
+            total_quantity: 0,
+            product_count: 0,
+            farmer_id: null,
+            total_value: 0,
+          }
+        },
+        { status: 200 }
       );
     }
     
+    // Format products to match frontend expectations
+    const formattedProducts = farmer.products.map(product => ({
+      id: product.id,
+      name: product.name,
+      quantity: product.quantity,
+      price: product.pricePerUnit, // Convert pricePerUnit → price
+      category: product.category,
+      description: product.description,
+      image_url: product.imageUrls[0] || null, // Convert imageUrls[0] → image_url
+      created_at: product.createdAt.toISOString(),
+      updated_at: product.updatedAt.toISOString(),
+      // Additional fields your frontend might use
+      grade: product.grade,
+      origin: product.originRegion,
+      altitude: product.altitude,
+      unit: product.unit,
+      status: product.status,
+      certifications: product.certifications,
+      harvest_date: product.harvestDate?.toISOString(),
+      processing_method: product.processingMethod,
+    }));
+    
     // Calculate stats
-    const totalQuantity = farmer.products.reduce((sum, product) => sum + product.quantity, 0);
-    const totalValue = farmer.products.reduce(
-      (sum, product) => sum + (product.quantity * product.pricePerUnit), 
+    const totalQuantity = formattedProducts.reduce((sum, product) => sum + product.quantity, 0);
+    const totalValue = formattedProducts.reduce(
+      (sum, product) => sum + (product.quantity * product.price), 
       0
     );
     
     return NextResponse.json({
       success: true,
-      products: farmer.products,
+      products: formattedProducts,
       stats: {
         total_quantity: totalQuantity,
-        product_count: farmer.products.length,
+        product_count: formattedProducts.length,
         farmer_id: farmer.id,
         total_value: totalValue,
       },
     });
     
   } catch (error: any) {
-    console.error('Error fetching farmer products:', error);
-    return NextResponse.json(
-      { 
-        success: false, 
-        error: error.message,
-        debug: process.env.NODE_ENV === 'development' ? error.stack : undefined 
+    console.error('❌ Error fetching farmer products:', error);
+    
+    return NextResponse.json({
+      success: false,
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Failed to fetch products',
+      products: [],
+      stats: {
+        total_quantity: 0,
+        product_count: 0,
+        farmer_id: null,
+        total_value: 0,
       },
-      { status: 500 }
-    );
+    }, { status: 500 });
   }
 }
 
-// POST /api/farmer/products - Add new product
+// POST endpoint for adding products
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    // Validate required fields
-    const requiredFields = ['farmerId', 'name', 'grade', 'category', 'quantity', 'pricePerUnit', 'originRegion'];
+    // Validation
+    const requiredFields = ['farmerId', 'name', 'category', 'quantity', 'price'];
     const missingFields = requiredFields.filter(field => !body[field]);
     
     if (missingFields.length > 0) {
@@ -89,29 +131,42 @@ export async function POST(request: NextRequest) {
       data: {
         farmerId: parseInt(body.farmerId),
         name: body.name,
-        grade: body.grade,
+        grade: body.grade || 'A',
         category: body.category,
         quantity: parseFloat(body.quantity),
         unit: body.unit || 'kg',
-        pricePerUnit: parseFloat(body.pricePerUnit),
+        pricePerUnit: parseFloat(body.price),
         description: body.description,
-        originRegion: body.originRegion,
+        originRegion: body.origin || body.originRegion || 'Ethiopia',
         altitude: body.altitude,
-        harvestDate: body.harvestDate ? new Date(body.harvestDate) : null,
-        processingMethod: body.processingMethod,
+        harvestDate: body.harvest_date ? new Date(body.harvest_date) : null,
+        processingMethod: body.processing_method,
         certifications: body.certifications || [],
-        moistureContent: body.moistureContent ? parseFloat(body.moistureContent) : null,
-        beanSize: body.beanSize,
-        cuppingScore: body.cuppingScore ? parseFloat(body.cuppingScore) : null,
-        imageUrls: body.imageUrls || [],
-        status: 'available',
+        moistureContent: body.moisture_content ? parseFloat(body.moisture_content) : null,
+        beanSize: body.bean_size,
+        cuppingScore: body.cupping_score ? parseFloat(body.cupping_score) : null,
+        imageUrls: body.image_url ? [body.image_url] : [],
+        status: body.status || 'available',
       },
     });
+    
+    // Format response to match frontend
+    const formattedProduct = {
+      id: product.id,
+      name: product.name,
+      quantity: product.quantity,
+      price: product.pricePerUnit,
+      category: product.category,
+      description: product.description,
+      image_url: product.imageUrls[0] || null,
+      created_at: product.createdAt.toISOString(),
+      updated_at: product.updatedAt.toISOString(),
+    };
     
     return NextResponse.json({
       success: true,
       message: 'Product created successfully',
-      product,
+      product: formattedProduct,
     }, { status: 201 });
     
   } catch (error: any) {
