@@ -25,24 +25,67 @@ import LoginForm from "../login/page";
 import RegisterForm from "../register/page";
 import ForgotPasswordForm from "../forgot/page";
 
-// Import images (you'll need to add these to your public folder)
-const images = {
-  hero: "/api/placeholder/1200/800",
-  farmer: "/api/placeholder/400/500",
-  coffeeBeans: "/api/placeholder/400/300",
-  marketplace: "/api/placeholder/400/300",
-  quality: "/api/placeholder/400/300",
-  stats: "/api/placeholder/400/300",
+// Floating coffee beans component - Fixed with client-side randomness
+const CoffeeBean = ({ delay, index }: { delay: number; index: number }) => {
+  const [position, setPosition] = useState({ 
+    x1: 0, 
+    x2: 0, 
+    duration: 20,
+    rotation: 0,
+    opacitySequence: [0, 1, 1, 0] as [number, number, number, number]
+  });
+  
+  useEffect(() => {
+    // Only generate random values on the client
+    setPosition({
+      x1: Math.random() * 100 - 50,
+      x2: Math.random() * 200 - 100,
+      duration: 20 + Math.random() * 10,
+      rotation: Math.random() * 360,
+      opacitySequence: [0, 1, 1, 0]
+    });
+  }, []);
+
+  return (
+    <motion.div
+      className="absolute"
+      initial={{ 
+        y: -100, 
+        x: position.x1, 
+        rotate: 0, 
+        opacity: 0 
+      }}
+      animate={{ 
+        y: "100vh", 
+        x: position.x2,
+        rotate: 360,
+        opacity: position.opacitySequence
+      }}
+      transition={{
+        duration: position.duration,
+        repeat: Infinity,
+        delay: delay,
+        ease: "linear"
+      }}
+    >
+      <Coffee className="w-6 h-6 text-amber-600/30" />
+    </motion.div>
+  );
 };
 
+// Main component
 export default function DarchoBackground() {
   const [activeModal, setActiveModal] = useState<"login" | "register" | "forgot" | null>(null);
   const [dark, setDark] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [active, setActive] = useState("hero");
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
 
+  // Initialize after mount to avoid hydration issues
   useEffect(() => {
+    setMounted(true);
+    
     const sections = ["hero", "about", "how", "features", "pricing", "contact"];
     const handleScroll = () => {
       let current = "hero";
@@ -52,6 +95,7 @@ export default function DarchoBackground() {
       });
       setActive(current);
     };
+    
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
@@ -60,27 +104,21 @@ export default function DarchoBackground() {
     ? "bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-gray-100" 
     : "bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 text-gray-900";
 
-  // Floating coffee beans animation
-  const CoffeeBean = ({ delay }: { delay: number }) => (
-    <motion.div
-      className="absolute"
-      initial={{ y: -100, x: Math.random() * 100 - 50, rotate: 0, opacity: 0 }}
-      animate={{ 
-        y: "100vh", 
-        x: Math.random() * 200 - 100,
-        rotate: 360,
-        opacity: [0, 1, 1, 0]
-      }}
-      transition={{
-        duration: 20 + Math.random() * 10,
-        repeat: Infinity,
-        delay: delay,
-        ease: "linear"
-      }}
-    >
-      <Coffee className="w-6 h-6 text-amber-600/30" />
-    </motion.div>
-  );
+  // Don't render animations until mounted
+  if (!mounted) {
+    return (
+      <div className={`w-full min-h-screen ${themeClass}`}>
+        {/* Simple static background while loading */}
+        <div className="fixed inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-1/4 -left-20 w-96 h-96 bg-amber-300/10 rounded-full blur-3xl" />
+          <div className="absolute bottom-1/4 -right-20 w-96 h-96 bg-orange-400/10 rounded-full blur-3xl" />
+        </div>
+        <div className="max-w-7xl mx-auto px-6 py-20">
+          <div className="h-96" /> {/* Placeholder */}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`w-full min-h-screen transition-all duration-700 ${themeClass} overflow-hidden`}>
@@ -90,9 +128,9 @@ export default function DarchoBackground() {
         <div className="absolute top-1/4 -left-20 w-96 h-96 bg-amber-300/10 rounded-full blur-3xl" />
         <div className="absolute bottom-1/4 -right-20 w-96 h-96 bg-orange-400/10 rounded-full blur-3xl" />
         
-        {/* Coffee Beans Floating */}
+        {/* Coffee Beans Floating - Only render after mount */}
         {Array.from({ length: 15 }).map((_, i) => (
-          <CoffeeBean key={i} delay={i * 1.5} />
+          <CoffeeBean key={i} index={i} delay={i * 1.5} />
         ))}
       </div>
 
