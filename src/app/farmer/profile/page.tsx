@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 interface FarmerProfile {
   id: number | string;
@@ -11,7 +12,15 @@ interface FarmerProfile {
   residence: string;
   farm_size?: string;
   years_farming?: number;
-  joined_date?: string;
+  farm_name?: string;
+  certifications?: string[];
+  join_date?: string;
+  experience?: string;
+  total_products?: number;
+  total_orders?: number;
+  avg_rating?: number;
+  response_time_hours?: number;
+  profile_image_url?: string;
 }
 
 interface Product {
@@ -24,6 +33,18 @@ interface Product {
   description?: string;
   image_url?: string;
   created_at?: string;
+}
+
+interface ApiResponse {
+  success: boolean;
+  profile?: FarmerProfile;
+  recent_products?: Product[];
+  stats?: {
+    total_products: number;
+    total_orders: number;
+    avg_rating: number;
+  };
+  error?: string;
 }
 
 export default function FarmerProfilePage() {
@@ -45,41 +66,119 @@ export default function FarmerProfilePage() {
     description: ""
   });
 
-  useEffect(() => {
-    async function loadProfile() {
-      try {
-        const res = await fetch("/api/farmer/profile");
-        
-        if (!res.ok) {
-          throw new Error(`HTTP error! Status: ${res.status}`);
-        }
-        
-        const data = await res.json();
+  const router = useRouter();
 
-        // Handle different response formats
-        if (data.profile) {
-          setProfile(data.profile);
-        } else if (data) {
-          setProfile(data);
-        } else {
-          throw new Error("No profile data received");
-        }
-      } catch (err: unknown) {
-        const errorMessage = err instanceof Error ? err.message : "Failed to load profile";
-        setError(errorMessage);
-      } finally {
-        setLoading(false);
-      }
+  // Get authentication headers
+  const getAuthHeaders = (): HeadersInit => {
+    const authHeader = localStorage.getItem("auth_header");
+    const sessionId = localStorage.getItem("session_id");
+    
+    const headers: HeadersInit = {
+      "Content-Type": "application/json",
+    };
+    
+    if (authHeader) {
+      headers["Authorization"] = authHeader;
+    } else if (sessionId) {
+      headers["Authorization"] = `Session ${sessionId}`;
     }
+    
+    return headers;
+  };
 
-    loadProfile();
-    loadProducts();
-  }, []);
+  // Check if user is authenticated
+  const checkAuth = (): boolean => {
+    const sessionId = localStorage.getItem("session_id");
+    const userRole = localStorage.getItem("user_role");
+    
+    if (!sessionId || userRole !== "farmer") {
+      return false;
+    }
+    return true;
+  };
 
+  // Load farmer profile
+  const loadProfile = async () => {
+    try {
+      setLoading(true);
+      setError("");
+      
+      // First check authentication
+      if (!checkAuth()) {
+        setError("You are not logged in. Please log in first.");
+        setLoading(false);
+        return;
+      }
+      
+      const res = await fetch("/api/farmer/profile", {
+        headers: getAuthHeaders(),
+      });
+      
+      console.log("Profile response status:", res.status);
+      
+      // Handle unauthorized
+      if (res.status === 401) {
+        localStorage.clear();
+        router.push("/login");
+        return;
+      }
+      
+      if (!res.ok) {
+        throw new Error(`HTTP error! Status: ${res.status}`);
+      }
+      
+      const data: ApiResponse = await res.json();
+      console.log("Profile API response:", data);
+
+      if (data.success && data.profile) {
+        setProfile(data.profile);
+        
+        // If API returns recent products, use them
+        if (data.recent_products && Array.isArray(data.recent_products)) {
+          setProducts(data.recent_products);
+        }
+      } else {
+        throw new Error(data.error || "Invalid response format");
+      }
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to load profile";
+      setError(errorMessage);
+      console.error("Profile loading error:", err);
+      
+      // For development: create mock profile if API fails
+      if (process.env.NODE_ENV === "development") {
+        console.log("Using mock profile for development");
+        setProfile({
+          id: 1,
+          fullname: "Abriham Kassa",
+          phone: "+251 972 590 743",
+          email: "abrihamkassa323@gmial.com",
+          region: "Oromia",
+          residence: "Addis Ababa",
+          farm_size: "5 hectares",
+          years_farming: 8,
+          farm_name: "Green Valley Farm",
+          certifications: ["Organic Certified", "Fair Trade", "Rainforest Alliance"],
+          join_date: new Date().toISOString(),
+          experience: "8 years",
+          total_products: 8,
+          total_orders: 24,
+          avg_rating: 4.8,
+          response_time_hours: 2,
+        });
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Load products separately
   const loadProducts = async () => {
     try {
       setLoadingProducts(true);
-      const res = await fetch("/api/farmer/products");
+      const res = await fetch("/api/farmer/products", {
+        headers: getAuthHeaders(),
+      });
       
       if (!res.ok) {
         throw new Error(`HTTP error! Status: ${res.status}`);
@@ -87,34 +186,53 @@ export default function FarmerProfilePage() {
       
       const data = await res.json();
 
-      if (data.products) {
+      if (data.success && data.products) {
         // Ensure price is a number for all products
         const validatedProducts = data.products.map((product: any) => ({
           ...product,
           price: typeof product.price === 'string' ? parseFloat(product.price) || 0 : 
                  typeof product.price === 'number' ? product.price : 0,
-          quantity: typeof product.quantity === 'string' ? parseInt(product.quantity) || 0 : 
+          quantity: typeof product.quantity === 'string' ? parseFloat(product.quantity) || 0 : 
                    typeof product.quantity === 'number' ? product.quantity : 0,
           unit: product.unit || 'kg'
         }));
         setProducts(validatedProducts);
-      } else if (data) {
+      } else if (data && Array.isArray(data)) {
         // If data is array directly
-        const validatedProducts = Array.isArray(data) ? data.map((product: any) => ({
+        const validatedProducts = data.map((product: any) => ({
           ...product,
           price: typeof product.price === 'string' ? parseFloat(product.price) || 0 : 
                  typeof product.price === 'number' ? product.price : 0,
-          quantity: typeof product.quantity === 'string' ? parseInt(product.quantity) || 0 : 
+          quantity: typeof product.quantity === 'string' ? parseFloat(product.quantity) || 0 : 
                    typeof product.quantity === 'number' ? product.quantity : 0,
           unit: product.unit || 'kg'
-        })) : [];
+        }));
         setProducts(validatedProducts);
       }
     } catch (err: unknown) {
       console.error("Failed to load products:", err);
-      setProducts([]); // Set empty array on error
+      // Keep existing products if any
     } finally {
       setLoadingProducts(false);
+    }
+  };
+
+  useEffect(() => {
+    // Add a small delay to ensure localStorage is set after login
+    const timer = setTimeout(() => {
+      loadProfile();
+      loadProducts();
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  const handleInputChange = (field: keyof FarmerProfile, value: string | number | string[]) => {
+    if (profile) {
+      setProfile({
+        ...profile,
+        [field]: value,
+      });
     }
   };
 
@@ -124,33 +242,56 @@ export default function FarmerProfilePage() {
     try {
       const res = await fetch("/api/farmer/profile", {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify(profile),
       });
 
       if (!res.ok) {
+        if (res.status === 401) {
+          localStorage.clear();
+          router.push("/login");
+          return;
+        }
         throw new Error("Failed to update profile");
       }
 
-      setIsEditing(false);
-      // Show success message
-      alert("Profile updated successfully!");
+      const data = await res.json();
+      
+      if (data.success) {
+        setIsEditing(false);
+        // Update profile with returned data
+        if (data.profile) {
+          setProfile(data.profile);
+        }
+        alert("Profile updated successfully!");
+      } else {
+        throw new Error(data.error || "Update failed");
+      }
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Failed to update profile";
       setError(errorMessage);
+      alert("Error: " + errorMessage);
     }
   };
 
   const handleAddProduct = async () => {
     try {
+      // Get farmer ID from localStorage or profile
+      const farmerId = localStorage.getItem("farmer_id") || profile?.id;
+      
+      if (!farmerId) {
+        throw new Error("Farmer ID not found. Please login again.");
+      }
+      
+      const productData = {
+        ...newProduct,
+        farmerId: farmerId,
+      };
+      
       const res = await fetch("/api/farmer/products", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(newProduct),
+        headers: getAuthHeaders(),
+        body: JSON.stringify(productData),
       });
 
       if (!res.ok) {
@@ -167,11 +308,14 @@ export default function FarmerProfilePage() {
         description: ""
       });
       
+      // Reload both profile and products
+      loadProfile();
       loadProducts();
       alert("Product added successfully!");
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Failed to add product";
       setError(errorMessage);
+      alert("Error: " + errorMessage);
     }
   };
 
@@ -181,9 +325,7 @@ export default function FarmerProfilePage() {
     try {
       const res = await fetch(`/api/farmer/products?id=${editingProduct.id}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify(editingProduct),
       });
 
@@ -197,6 +339,7 @@ export default function FarmerProfilePage() {
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Failed to update product";
       setError(errorMessage);
+      alert("Error: " + errorMessage);
     }
   };
 
@@ -206,6 +349,7 @@ export default function FarmerProfilePage() {
     try {
       const res = await fetch(`/api/farmer/products?id=${productId}`, {
         method: "DELETE",
+        headers: getAuthHeaders(),
       });
 
       if (!res.ok) {
@@ -217,15 +361,7 @@ export default function FarmerProfilePage() {
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Failed to delete product";
       setError(errorMessage);
-    }
-  };
-
-  const handleInputChange = (field: keyof FarmerProfile, value: string) => {
-    if (profile) {
-      setProfile({
-        ...profile,
-        [field]: value,
-      });
+      alert("Error: " + errorMessage);
     }
   };
 
@@ -254,6 +390,17 @@ export default function FarmerProfilePage() {
     return numPrice.toFixed(2);
   };
 
+  // Handle logout
+  const handleLogout = () => {
+    localStorage.clear();
+    router.push("/login");
+  };
+
+  // Handle login redirect
+  const handleLoginRedirect = () => {
+    router.push("/login");
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px]">
@@ -273,12 +420,20 @@ export default function FarmerProfilePage() {
           </div>
           <h2 className="text-xl font-bold text-red-700 mb-2">Error Loading Profile</h2>
           <p className="text-red-600 mb-4">{error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition"
-          >
-            Try Again
-          </button>
+          <div className="space-y-2">
+            <button
+              onClick={() => window.location.reload()}
+              className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition"
+            >
+              Try Again
+            </button>
+            <button
+              onClick={handleLoginRedirect}
+              className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition ml-2"
+            >
+              Go to Login
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -307,6 +462,29 @@ export default function FarmerProfilePage() {
   return (
     <div className="min-h-screen bg-amber-50 p-4 md:p-6">
       <div className="max-w-6xl mx-auto">
+        {/* Debug Info */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-yellow-800">Debug Mode - Session: {localStorage.getItem("session_id")?.substring(0, 10)}...</span>
+              <button
+                onClick={() => {
+                  console.log("Profile data:", profile);
+                  console.log("Products:", products);
+                  console.log("LocalStorage:", {
+                    session_id: localStorage.getItem("session_id"),
+                    farmer_id: localStorage.getItem("farmer_id"),
+                    user_role: localStorage.getItem("user_role"),
+                  });
+                }}
+                className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded"
+              >
+                Show Data
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-amber-900">Farmer Profile</h1>
@@ -329,8 +507,20 @@ export default function FarmerProfilePage() {
             >
               {isEditing ? "Cancel" : "Edit Profile"}
             </button>
+            <button
+              onClick={handleLogout}
+              className="px-5 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition"
+            >
+              Logout
+            </button>
           </div>
         </div>
+
+        {error && !isEditing && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl">
+            <p className="text-red-700">{error}</p>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Profile Card */}
@@ -340,14 +530,25 @@ export default function FarmerProfilePage() {
               <div className="bg-amber-800 text-white p-6">
                 <div className="flex items-center space-x-4">
                   <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center text-amber-800 text-3xl">
-                    👨‍🌾
+                    {profile.profile_image_url ? (
+                      <img 
+                        src={profile.profile_image_url} 
+                        alt={profile.fullname}
+                        className="w-full h-full rounded-full object-cover"
+                      />
+                    ) : (
+                      "👨‍🌾"
+                    )}
                   </div>
                   <div>
                     <h2 className="text-2xl font-bold">{profile.fullname}</h2>
                     <p className="text-amber-200">Farmer Account</p>
-                    {profile.joined_date && (
+                    {profile.farm_name && (
+                      <p className="text-amber-200">{profile.farm_name}</p>
+                    )}
+                    {profile.join_date && (
                       <p className="text-sm text-amber-300 mt-1">
-                        Member since {new Date(profile.joined_date).toLocaleDateString()}
+                        Member since {new Date(profile.join_date).toLocaleDateString()}
                       </p>
                     )}
                   </div>
@@ -376,6 +577,26 @@ export default function FarmerProfilePage() {
                         />
                       ) : (
                         <p className="text-lg text-gray-900 font-medium">{profile.fullname}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Farm Name */}
+                  <div className="flex flex-col md:flex-row md:items-center">
+                    <div className="md:w-1/3 mb-2 md:mb-0">
+                      <label className="block text-sm font-medium text-gray-700">Farm Name</label>
+                    </div>
+                    <div className="md:w-2/3">
+                      {isEditing ? (
+                        <input
+                          type="text"
+                          value={profile.farm_name || ""}
+                          onChange={(e) => handleInputChange("farm_name", e.target.value)}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                          placeholder="Enter farm name"
+                        />
+                      ) : (
+                        <p className="text-lg text-gray-900">{profile.farm_name || "Not specified"}</p>
                       )}
                     </div>
                   </div>
@@ -494,7 +715,7 @@ export default function FarmerProfilePage() {
                         <input
                           type="number"
                           value={profile.years_farming || ""}
-                          onChange={(e) => handleInputChange("years_farming", e.target.value)}
+                          onChange={(e) => handleInputChange("years_farming", parseInt(e.target.value) || 0)}
                           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                           placeholder="e.g., 10"
                         />
@@ -502,6 +723,39 @@ export default function FarmerProfilePage() {
                         <p className="text-lg text-gray-900">
                           {profile.years_farming ? `${profile.years_farming} years` : "Not specified"}
                         </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Certifications */}
+                  <div className="flex flex-col md:flex-row md:items-start">
+                    <div className="md:w-1/3 mb-2 md:mb-0">
+                      <label className="block text-sm font-medium text-gray-700">Certifications</label>
+                    </div>
+                    <div className="md:w-2/3">
+                      {isEditing ? (
+                        <div className="space-y-2">
+                          <input
+                            type="text"
+                            value={profile.certifications?.join(", ") || ""}
+                            onChange={(e) => handleInputChange("certifications", e.target.value.split(", "))}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                            placeholder="Organic, Fair Trade, Rainforest Alliance"
+                          />
+                          <p className="text-xs text-gray-500">Separate with commas</p>
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          {profile.certifications && profile.certifications.length > 0 ? (
+                            profile.certifications.map((cert, index) => (
+                              <span key={index} className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
+                                {cert}
+                              </span>
+                            ))
+                          ) : (
+                            <p className="text-gray-500">No certifications</p>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -615,19 +869,26 @@ export default function FarmerProfilePage() {
                 </div>
                 <div className="p-4 bg-green-50 rounded-lg">
                   <p className="text-sm text-gray-600">Total Products</p>
-                  <p className="text-xl font-bold text-green-700">{products.length}</p>
+                  <p className="text-xl font-bold text-green-700">
+                    {profile.total_products || products.length}
+                  </p>
                 </div>
                 <div className="p-4 bg-blue-50 rounded-lg">
-                  <p className="text-sm text-gray-600">Region</p>
-                  <p className="text-xl font-bold text-blue-700">{profile.region}</p>
+                  <p className="text-sm text-gray-600">Total Orders</p>
+                  <p className="text-xl font-bold text-blue-700">
+                    {profile.total_orders || 0}
+                  </p>
                 </div>
                 <div className="p-4 bg-purple-50 rounded-lg">
-                  <p className="text-sm text-gray-600">Member Since</p>
+                  <p className="text-sm text-gray-600">Average Rating</p>
                   <p className="text-xl font-bold text-purple-700">
-                    {profile.joined_date 
-                      ? new Date(profile.joined_date).toLocaleDateString()
-                      : "Recently"
-                    }
+                    {profile.avg_rating ? `${profile.avg_rating}/5` : "No ratings yet"}
+                  </p>
+                </div>
+                <div className="p-4 bg-indigo-50 rounded-lg">
+                  <p className="text-sm text-gray-600">Response Time</p>
+                  <p className="text-xl font-bold text-indigo-700">
+                    {profile.response_time_hours ? `< ${profile.response_time_hours}h` : "Not set"}
                   </p>
                 </div>
               </div>
@@ -637,7 +898,10 @@ export default function FarmerProfilePage() {
             <div className="bg-white shadow-xl rounded-2xl p-6 border border-amber-100">
               <h3 className="text-lg font-semibold text-gray-800 mb-4">Quick Actions</h3>
               <div className="space-y-3">
-                <button className="w-full text-left px-4 py-3 bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 transition">
+                <button 
+                  onClick={() => router.push('/farmer/orders')}
+                  className="w-full text-left px-4 py-3 bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 transition"
+                >
                   View Orders
                 </button>
                 <button 
@@ -646,7 +910,10 @@ export default function FarmerProfilePage() {
                 >
                   Add New Product
                 </button>
-                <button className="w-full text-left px-4 py-3 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition">
+                <button 
+                  onClick={() => router.push('/farmer/insights')}
+                  className="w-full text-left px-4 py-3 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition"
+                >
                   View Analytics
                 </button>
                 <button className="w-full text-left px-4 py-3 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition">
@@ -681,7 +948,7 @@ export default function FarmerProfilePage() {
                     value={newProduct.name}
                     onChange={(e) => handleProductInputChange("name", e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
-                    placeholder="e.g., Fresh Tomatoes"
+                    placeholder="e.g., Yirgacheffe AA Premium"
                   />
                 </div>
 
@@ -693,11 +960,11 @@ export default function FarmerProfilePage() {
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                   >
                     <option value="">Select Category</option>
-                    <option value="Vegetables">Vegetables</option>
-                    <option value="Fruits">Fruits</option>
-                    <option value="Grains">Grains</option>
-                    <option value="Dairy">Dairy</option>
-                    <option value="Livestock">Livestock</option>
+                    <option value="Specialty Coffee">Specialty Coffee</option>
+                    <option value="Arabica">Arabica</option>
+                    <option value="Robusta">Robusta</option>
+                    <option value="Organic Coffee">Organic Coffee</option>
+                    <option value="Fair Trade">Fair Trade</option>
                     <option value="Other">Other</option>
                   </select>
                 </div>
@@ -726,9 +993,8 @@ export default function FarmerProfilePage() {
                       <option value="kg">kg</option>
                       <option value="g">g</option>
                       <option value="lb">lb</option>
-                      <option value="piece">piece</option>
-                      <option value="liter">liter</option>
-                      <option value="dozen">dozen</option>
+                      <option value="bag">bag</option>
+                      <option value="sack">sack</option>
                     </select>
                   </div>
                 </div>
@@ -742,6 +1008,7 @@ export default function FarmerProfilePage() {
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                     placeholder="0"
                     min="0"
+                    step="0.5"
                   />
                 </div>
 
@@ -752,7 +1019,7 @@ export default function FarmerProfilePage() {
                     onChange={(e) => handleProductInputChange("description", e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                     rows={3}
-                    placeholder="Describe your product..."
+                    placeholder="Describe your product (grade, processing method, tasting notes, etc.)"
                   />
                 </div>
               </div>
@@ -809,11 +1076,11 @@ export default function FarmerProfilePage() {
                     onChange={(e) => handleProductInputChange("category", e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                   >
-                    <option value="Vegetables">Vegetables</option>
-                    <option value="Fruits">Fruits</option>
-                    <option value="Grains">Grains</option>
-                    <option value="Dairy">Dairy</option>
-                    <option value="Livestock">Livestock</option>
+                    <option value="Specialty Coffee">Specialty Coffee</option>
+                    <option value="Arabica">Arabica</option>
+                    <option value="Robusta">Robusta</option>
+                    <option value="Organic Coffee">Organic Coffee</option>
+                    <option value="Fair Trade">Fair Trade</option>
                     <option value="Other">Other</option>
                   </select>
                 </div>
@@ -841,9 +1108,8 @@ export default function FarmerProfilePage() {
                       <option value="kg">kg</option>
                       <option value="g">g</option>
                       <option value="lb">lb</option>
-                      <option value="piece">piece</option>
-                      <option value="liter">liter</option>
-                      <option value="dozen">dozen</option>
+                      <option value="bag">bag</option>
+                      <option value="sack">sack</option>
                     </select>
                   </div>
                 </div>
@@ -856,6 +1122,7 @@ export default function FarmerProfilePage() {
                     onChange={(e) => handleProductInputChange("quantity", e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                     min="0"
+                    step="0.5"
                   />
                 </div>
 
