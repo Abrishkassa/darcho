@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState(""); // Changed from phone to email
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -23,65 +24,65 @@ export default function LoginPage() {
     }
 
     try {
-      const response = await fetch("/api/auth/login", { // Updated endpoint
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }), // Send email not phone
+      const result = await signIn("credentials", {
+        email,
+        password,
+        redirect: false,
       });
 
-      const data = await response.json();
-
-      if (data.success) {
-        // Store session data - UPDATED STRUCTURE
-        localStorage.setItem("session_id", data.session.session_id); // Changed from data.session.id
-        localStorage.setItem("auth_header", data.session.auth_header);
-        localStorage.setItem("user_id", data.user.id.toString());
-        localStorage.setItem("user_role", data.user.role);
-        localStorage.setItem("user_email", data.user.email);
-        localStorage.setItem("user_fullname", data.user.fullName);
-        
-        // Store farmer/buyer specific ID
-        if (data.user.role === "farmer" && data.user.farmer_id) {
-          localStorage.setItem("farmer_id", data.user.farmer_id.toString());
-        }
-        if (data.user.role === "buyer" && data.user.buyer_id) {
-          localStorage.setItem("buyer_id", data.user.buyer_id.toString());
-        }
-
-        // Redirect based on role
-        if (data.user.role === "farmer") {
-          router.push("/farmer");
-        } else if (data.user.role === "buyer") {
-          router.push("/buyer/dashboard");
-        } else if (data.user.role === "admin") {
-          router.push("/admin/dashboard");
-        } else {
-          router.push("/dashboard");
-        }
-        
-        router.refresh();
-      } else {
-        setError(data.error || "Login failed. Please check your credentials.");
+      if (result?.error) {
+        setError(result.error === "CredentialsSignin" 
+          ? "Invalid email or password" 
+          : result.error);
+        return;
       }
+
+      // Fetch session to determine role
+      const sessionRes = await fetch("/api/auth/session");
+      const session = await sessionRes.json();
+
+      const role = session?.user?.role;
+
+      // Redirect based on role
+      if (role === "buyer") {
+        router.push("/buyer/dashboard");
+      } else if (role === "farmer") {
+        router.push("/farmer/dashboard");
+      } else if (role === "admin") {
+        router.push("/admin/dashboard");
+      } else {
+        router.push("/dashboard");
+      }
+
+      router.refresh();
     } catch (err: any) {
-      setError(err.message || "An error occurred during login");
+      setError(err.message || "Login failed. Please try again.");
       console.error("Login error:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  // Test login function for development
-  const handleTestLogin = async (role: 'farmer' | 'buyer') => {
+  // Test login function
+  const handleTestLogin = async (role: 'farmer' | 'buyer' | 'admin') => {
     setLoading(true);
     setError("");
     
     try {
-      const testCredentials = role === 'farmer' 
-        ? { email: 'farmer@darcho.com', password: 'farmer123' }
-        : { email: 'buyer@darcho.com', password: 'buyer123' };
+      let testCredentials;
+      switch(role) {
+        case 'farmer':
+          testCredentials = { email: 'farmer@darcho.com', password: 'farmer123' };
+          break;
+        case 'buyer':
+          testCredentials = { email: 'buyer@darcho.com', password: 'buyer123' };
+          break;
+        case 'admin':
+          testCredentials = { email: 'admin@darcho.com', password: 'admin123' };
+          break;
+        default:
+          testCredentials = { email: 'test@darcho.com', password: 'test123' };
+      }
       
       setEmail(testCredentials.email);
       setPassword(testCredentials.password);
@@ -89,34 +90,33 @@ export default function LoginPage() {
       // Simulate typing delay
       await new Promise(resolve => setTimeout(resolve, 300));
       
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(testCredentials),
+      const result = await signIn("credentials", {
+        email: testCredentials.email,
+        password: testCredentials.password,
+        redirect: false,
       });
 
-      const data = await response.json();
-      
-      if (data.success) {
-        // Store session data
-        localStorage.setItem("session_id", data.session.session_id);
-        localStorage.setItem("auth_header", data.session.auth_header);
-        localStorage.setItem("user_id", data.user.id.toString());
-        localStorage.setItem("user_role", data.user.role);
-        localStorage.setItem("user_email", data.user.email);
-        localStorage.setItem("user_fullname", data.user.fullName);
-        
-        if (data.user.role === "farmer" && data.user.farmer_id) {
-          localStorage.setItem("farmer_id", data.user.farmer_id.toString());
-        }
-        
-        router.push("/farmer");
-        router.refresh();
-      } else {
-        setError(data.error || `Test ${role} login failed`);
+      if (result?.error) {
+        setError(`Test ${role} login failed. Please ensure test user exists.`);
+        return;
       }
+
+      // Fetch session and redirect
+      const sessionRes = await fetch("/api/auth/session");
+      const session = await sessionRes.json();
+      const userRole = session?.user?.role || role;
+
+      if (userRole === "buyer") {
+        router.push("/buyer/dashboard");
+      } else if (userRole === "farmer") {
+        router.push("/farmer/dashboard");
+      } else if (userRole === "admin") {
+        router.push("/admin/dashboard");
+      } else {
+        router.push("/dashboard");
+      }
+      
+      router.refresh();
     } catch (err: any) {
       setError("Test login error. Make sure backend is running.");
       console.error("Test login error:", err);
@@ -158,24 +158,35 @@ export default function LoginPage() {
           {process.env.NODE_ENV === 'development' && (
             <div className="mb-6 space-y-3">
               <p className="text-sm text-gray-600 text-center">Test Accounts:</p>
-              <div className="flex gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <button
                   type="button"
                   onClick={() => handleTestLogin('farmer')}
                   disabled={loading}
-                  className="flex-1 py-2 px-4 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+                  className="py-2 px-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white rounded-lg text-sm font-medium disabled:opacity-50 transition-all duration-200 shadow-sm hover:shadow"
                 >
-                  Login as Farmer
+                  Farmer
                 </button>
                 <button
                   type="button"
                   onClick={() => handleTestLogin('buyer')}
                   disabled={loading}
-                  className="flex-1 py-2 px-4 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50"
+                  className="py-2 px-4 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white rounded-lg text-sm font-medium disabled:opacity-50 transition-all duration-200 shadow-sm hover:shadow"
                 >
-                  Login as Buyer
+                  Buyer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTestLogin('admin')}
+                  disabled={loading}
+                  className="py-2 px-4 bg-gradient-to-r from-purple-500 to-violet-600 hover:from-purple-600 hover:to-violet-700 text-white rounded-lg text-sm font-medium disabled:opacity-50 transition-all duration-200 shadow-sm hover:shadow"
+                >
+                  Admin
                 </button>
               </div>
+              <p className="text-xs text-gray-500 text-center mt-2">
+                These buttons only appear in development mode
+              </p>
             </div>
           )}
 
