@@ -65,14 +65,14 @@ export default function AdminDashboard() {
 
   const recentUsers = [
     { id: 1, name: "Abriham Kassa", email: "abriham@darcho.com", role: "Farmer", status: "active", joinDate: "2024-01-15" },
-    { id: 2, name: "Selam Desta", email: "selam@buyer.com", role: "Buyer", status: "active", joinDate: "2024-01-14" },
+    { id: 2, name: "{userName}", email: "selam@buyer.com", role: "Buyer", status: "active", joinDate: "2024-01-14" },
     { id: 3, name: "Mikael Assefa", email: "mikael@farmer.com", role: "Farmer", status: "pending", joinDate: "2024-01-13" },
     { id: 4, name: "Helen Tesfaye", email: "helen@exporter.com", role: "Exporter", status: "active", joinDate: "2024-01-12" },
     { id: 5, name: "Daniel Solomon", email: "daniel@buyer.com", role: "Buyer", status: "inactive", joinDate: "2024-01-11" },
   ];
 
   const recentOrders = [
-    { id: "ORD-1001", customer: "Selam Desta", product: "Arabica Coffee", amount: "₮ 45,000", status: "completed", date: "2024-01-15" },
+    { id: "ORD-1001", customer: "{userName}", product: "Arabica Coffee", amount: "₮ 45,000", status: "completed", date: "2024-01-15" },
     { id: "ORD-1002", customer: "Global Exports", product: "Organic Coffee", amount: "₮ 128,000", status: "processing", date: "2024-01-14" },
     { id: "ORD-1003", customer: "Cafe Addis", product: "Sidamo Blend", amount: "₮ 67,500", status: "pending", date: "2024-01-13" },
     { id: "ORD-1004", customer: "Bean Traders", product: "Yirgacheffe", amount: "₮ 92,000", status: "completed", date: "2024-01-12" },

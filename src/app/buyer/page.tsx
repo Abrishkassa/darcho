@@ -1,7 +1,8 @@
 "use client";
-
+import { useSession } from "next-auth/react";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+
 import { 
   Home, 
   Package, 
@@ -57,6 +58,8 @@ export default function BuyerDashboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [cartItems, setCartItems] = useState(3);
   const [favorites, setFavorites] = useState([1, 3]);
+  const { data: session } = useSession();
+const userName = session?.user?.name || "Guest";
 
   // Mock data
   const stats = [
@@ -70,7 +73,7 @@ export default function BuyerDashboardPage() {
 
   const recentOrders = [
     { id: "ORD-2024-015", product: "Yirgacheffe AA", farmer: "Abriham Kassa", status: "delivered", amount: "₮ 28,000", date: "2 days ago", rating: 5 },
-    { id: "ORD-2024-014", product: "Sidamo Natural", farmer: "Selam Desta", status: "shipped", amount: "₮ 12,000", date: "3 days ago", rating: 4 },
+    { id: "ORD-2024-014", product: "Sidamo Natural", farmer: "{userName}", status: "shipped", amount: "₮ 12,000", date: "3 days ago", rating: 4 },
     { id: "ORD-2024-013", product: "Harar Longberry", farmer: "Mikael Assefa", status: "processing", amount: "₮ 9,600", date: "5 days ago", rating: null },
     { id: "ORD-2024-012", product: "Limu Washed", farmer: "Helen Tesfaye", status: "delivered", amount: "₮ 15,600", date: "1 week ago", rating: 5 },
     { id: "ORD-2024-011", product: "Guij Coffee AA", farmer: "Daniel Solomon", status: "delivered", amount: "₮ 32,000", date: "1 week ago", rating: 4 },
@@ -85,7 +88,7 @@ export default function BuyerDashboardPage() {
 
   const topFarmers = [
     { id: 1, name: "Abriham Kassa", region: "Yirgacheffe", rating: 4.9, orders: 24, response: "< 2h" },
-    { id: 2, name: "Selam Desta", region: "Sidamo", rating: 4.8, orders: 18, response: "< 4h" },
+    { id: 2, name: "{userName}", region: "Sidamo", rating: 4.8, orders: 18, response: "< 4h" },
     { id: 3, name: "Mikael Assefa", region: "Harar", rating: 4.7, orders: 15, response: "< 6h" },
     { id: 4, name: "Helen Tesfaye", region: "Limu", rating: 4.6, orders: 12, response: "< 3h" },
   ];
@@ -126,7 +129,7 @@ export default function BuyerDashboardPage() {
                       <Sparkles className="w-6 h-6" />
                       <span className="text-amber-100 font-semibold">Welcome back!</span>
                     </div>
-                    <h1 className="text-3xl font-bold mb-3">Hello, Selam Desta 👋</h1>
+                    <h1 className="text-3xl font-bold mb-3">Hello, {userName} 👋</h1>
                     <p className="text-amber-100 max-w-2xl">
                       Your coffee trading dashboard is updated with the latest market insights and recommendations.
                     </p>
@@ -635,7 +638,7 @@ export default function BuyerDashboardPage() {
                   <User className="w-5 h-5 text-white" />
                 </div>
                 <div className="hidden md:block">
-                  <div className="font-medium">Selam Desta</div>
+                  <div className="font-medium">{userName}</div>
                   <div className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-600"}`}>Premium Buyer</div>
                 </div>
                 <button className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">

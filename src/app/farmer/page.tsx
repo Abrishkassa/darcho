@@ -102,7 +102,7 @@ export default function FarmerPortal() {
   const orders = [
     {
       id: "ORD-2024-001",
-      buyer: "Selam Desta",
+      buyer: "{userName}",
       product: "Yirgacheffe AA",
       quantity: "10 kg",
       total: "ETB 28,000",

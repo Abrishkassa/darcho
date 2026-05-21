@@ -1159,7 +1159,7 @@ function getMockData(): DashboardData {
           certifications: ["Organic"],
           farmer: {
             user: {
-              fullName: "Selam Desta"
+              fullName: "{userName}"
             }
           }
         }
@@ -1188,7 +1188,7 @@ function getMockData(): DashboardData {
         userId: 2,
         farmName: "Desta Coffee",
         region: "Sidamo",
-        user: { fullName: "Selam Desta" },
+        user: { fullName: "{userName}" },
         orderCount: 6,
         totalSpent: 72000
       },
