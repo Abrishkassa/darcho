@@ -124,6 +124,31 @@ export default function FarmerDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"overview" | "products" | "orders" | "profile" | "insights">("overview");
   const [searchQuery, setSearchQuery] = useState("");
+  const [showAddProduct, setShowAddProduct] = useState(false);
+const [newProduct, setNewProduct] = useState({ name: "", category: "", quantity: "", price: "", description: "", origin: "" });
+const [submitting, setSubmitting] = useState(false);
+
+const handleAddProduct = async () => {
+  setSubmitting(true);
+  try {
+    const res = await fetch("/api/farmer/products", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...newProduct, farmerId: dashboardData?.data?.farmerProfile?.id || 1 }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setShowAddProduct(false);
+      setNewProduct({ name: "", category: "", quantity: "", price: "", description: "", origin: "" });
+      window.location.reload();
+    } else {
+      alert("Error: " + data.error);
+    }
+  } catch (err) {
+    alert("Failed to add product");
+  }
+  setSubmitting(false);
+};
 
   // AUTH + ROLE GUARD
   useEffect(() => {
@@ -451,10 +476,10 @@ export default function FarmerDashboard() {
                     className="pl-10 pr-4 py-2 rounded-lg border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
                   />
                 </div>
-                <button className="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-green-600 text-white hover:shadow-lg transition-all flex items-center gap-2">
-                  <Package className="w-4 h-4" />
-                  Add New Product
-                </button>
+                <button onClick={() => setShowAddProduct(true)} className="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-green-600 text-white hover:shadow-lg transition-all flex items-center gap-2">
+  <Package className="w-4 h-4" />
+  Add New Product
+</button>
               </div>
             </div>
 
@@ -633,6 +658,27 @@ export default function FarmerDashboard() {
           </div>
         </div>
       </footer>
+      {showAddProduct && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div className="w-full max-w-md p-6 rounded-2xl shadow-2xl bg-white">
+      <h2 className="text-xl font-bold mb-4">Add New Product</h2>
+      <div className="space-y-3">
+        <input placeholder="Product Name *" value={newProduct.name} onChange={e => setNewProduct({...newProduct, name: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+        <input placeholder="Category (e.g. Arabica) *" value={newProduct.category} onChange={e => setNewProduct({...newProduct, category: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+        <input placeholder="Quantity in kg *" value={newProduct.quantity} onChange={e => setNewProduct({...newProduct, quantity: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+        <input placeholder="Price per kg in ETB *" value={newProduct.price} onChange={e => setNewProduct({...newProduct, price: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+        <input placeholder="Origin Region" value={newProduct.origin} onChange={e => setNewProduct({...newProduct, origin: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+        <textarea placeholder="Description" value={newProduct.description} onChange={e => setNewProduct({...newProduct, description: e.target.value})} className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-amber-500" rows={3} />
+      </div>
+      <div className="flex gap-3 mt-6">
+        <button onClick={() => setShowAddProduct(false)} className="flex-1 py-2 rounded-lg border border-gray-300 hover:bg-gray-50">Cancel</button>
+        <button onClick={handleAddProduct} disabled={submitting} className="flex-1 py-2 rounded-lg bg-gradient-to-r from-emerald-600 to-green-600 text-white disabled:opacity-50">
+          {submitting ? "Adding..." : "Add Product"}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 }
