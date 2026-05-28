@@ -58,6 +58,20 @@ export default function BuyerDashboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [cartItems, setCartItems] = useState(3);
   const [favorites, setFavorites] = useState([1, 3]);
+  const [realProducts, setRealProducts] = useState<any[]>([]);
+const [productsLoading, setProductsLoading] = useState(false);
+
+useEffect(() => {
+  if (activeTab === 'products') {
+    setProductsLoading(true);
+    fetch('/api/buyer/products')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) setRealProducts(data.data);
+      })
+      .finally(() => setProductsLoading(false));
+  }
+}, [activeTab]);
   const { data: session } = useSession();
 const userName = session?.user?.name || "Guest";
 
@@ -459,24 +473,70 @@ const userName = session?.user?.name || "Guest";
       case "products":
         return (
           <div className="space-y-6">
-            <div className={`p-6 rounded-2xl backdrop-blur-sm border ${
-              darkMode 
-                ? "bg-gray-800/50 border-gray-700" 
-                : "bg-white/80 border-gray-200"
-            } shadow-lg`}>
-              <h2 className={`text-2xl font-bold mb-6 ${darkMode ? "text-white" : "text-gray-900"}`}>Product Analytics</h2>
-              <div className="text-center py-12">
-                <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
-                  <Package className="w-10 h-10 text-white" />
-                </div>
-                <h3 className={`text-2xl font-bold mb-2 ${darkMode ? "text-white" : "text-gray-900"}`}>
-                  Coming Soon
-                </h3>
-                <p className={darkMode ? "text-gray-400" : "text-gray-600"}>
-                  Product analytics dashboard is under development
-                </p>
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className={`text-2xl font-bold ${darkMode ? "text-white" : "text-gray-900"}`}>Browse Coffee Products</h2>
+                <p className={`mt-1 ${darkMode ? "text-gray-400" : "text-gray-600"}`}>Direct from Ethiopian farmers</p>
+              </div>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search products..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className={`pl-10 pr-4 py-2 rounded-lg border ${darkMode ? "bg-gray-800 border-gray-700 text-white" : "bg-white border-gray-300"} focus:outline-none focus:ring-2 focus:ring-amber-500`}
+                />
               </div>
             </div>
+
+            {productsLoading ? (
+              <div className="text-center py-12">
+                <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                <p className={darkMode ? "text-gray-400" : "text-gray-600"}>Loading products...</p>
+              </div>
+            ) : realProducts.length === 0 ? (
+              <div className="text-center py-12">
+                <Package className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+                <p className={darkMode ? "text-gray-400" : "text-gray-600"}>No products available yet</p>
+              </div>
+            ) : (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {realProducts
+                  .filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                  .map((product) => (
+                  <div key={product.id} className={`rounded-2xl border overflow-hidden ${darkMode ? "bg-gray-800/50 border-gray-700" : "bg-white border-gray-200"} shadow-lg hover:shadow-xl transition-all duration-300`}>
+                    <div className="h-40 bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
+                      <Coffee className="w-16 h-16 text-white opacity-80" />
+                    </div>
+                    <div className="p-5">
+                      <div className="flex items-start justify-between mb-2">
+                        <h3 className={`font-bold text-lg ${darkMode ? "text-white" : "text-gray-900"}`}>{product.name}</h3>
+                        <span className={`px-2 py-1 rounded-full text-xs ${darkMode ? "bg-amber-900/30 text-amber-400" : "bg-amber-100 text-amber-700"}`}>{product.grade} Grade</span>
+                      </div>
+                      <p className={`text-sm mb-3 ${darkMode ? "text-gray-400" : "text-gray-600"}`}>{product.description}</p>
+                      <div className={`flex items-center gap-2 text-sm mb-3 ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+                        <MapPin className="w-4 h-4" />
+                        {product.origin_region}
+                      </div>
+                      <div className={`flex items-center gap-2 text-sm mb-4 ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+                        <User className="w-4 h-4" />
+                        {product.farmers?.users?.full_name} • {product.farmers?.farm_name}
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-xl font-bold text-amber-500">ETB {product.price_per_unit}/kg</div>
+                          <div className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>{product.quantity} kg available</div>
+                        </div>
+                        <button className="px-4 py-2 rounded-lg bg-gradient-to-r from-amber-600 to-orange-600 text-white hover:shadow-lg transition-all text-sm font-medium">
+                          Order Now
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         );
 

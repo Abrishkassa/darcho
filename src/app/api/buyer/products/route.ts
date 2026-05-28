@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
-import { getServerSession } from 'next-auth';
+import { supabase } from '@/app/lib/supabase';
 
-const prisma = new PrismaClient();
-
-// GET /api/buyer/products - List all products with filters
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -14,58 +10,39 @@ export async function GET(request: NextRequest) {
     const region = searchParams.get('region');
     const minPrice = searchParams.get('minPrice');
     const maxPrice = searchParams.get('maxPrice');
-    const sortBy = searchParams.get('sortBy') || 'createdAt';
-    const sortOrder = searchParams.get('sortOrder') || 'desc';
     const search = searchParams.get('search');
-
     const skip = (page - 1) * limit;
 
-    const where: any = {
-      status: 'available'
-    };
+    let query = supabase
+      .from('products')
+      .select(`
+        *,
+        farmers (
+          id,
+          farm_name,
+          region,
+          avg_rating,
+          users (
+            full_name,
+            phone
+          )
+        )
+      `, { count: 'exact' })
+      .eq('status', 'available')
+      .range(skip, skip + limit - 1)
+      .order('created_at', { ascending: false });
 
-    if (category && category !== 'all') {
-      where.category = category;
-    }
+    if (category && category !== 'all') query = query.eq('category', category);
+    if (region) query = query.eq('origin_region', region);
+    if (minPrice) query = query.gte('price_per_unit', parseFloat(minPrice));
+    if (maxPrice) query = query.lte('price_per_unit', parseFloat(maxPrice));
+    if (search) query = query.ilike('name', `%${search}%`);
 
-    if (region) {
-      where.originRegion = region;
-    }
+    const { data: products, error, count } = await query;
 
-    if (minPrice || maxPrice) {
-      where.pricePerUnit = {};
-      if (minPrice) where.pricePerUnit.gte = parseFloat(minPrice);
-      if (maxPrice) where.pricePerUnit.lte = parseFloat(maxPrice);
-    }
+    if (error) throw error;
 
-    if (search) {
-      where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } },
-        { originRegion: { contains: search, mode: 'insensitive' } },
-        { farmer: { user: { fullName: { contains: search, mode: 'insensitive' } } } }
-      ];
-    }
-
-    const [products, total] = await Promise.all([
-      prisma.product.findMany({
-        where,
-        include: {
-          farmer: {
-            include: {
-              user: {
-                select: { fullName: true, phone: true }
-              }
-            }
-          }
-        },
-        orderBy: { [sortBy]: sortOrder },
-        skip,
-        take: limit,
-      }),
-      prisma.product.count({ where })
-    ]);
-
+    const total = count || 0;
     const totalPages = Math.ceil(total / limit);
 
     return NextResponse.json({
@@ -80,7 +57,8 @@ export async function GET(request: NextRequest) {
         hasPrevPage: page > 1,
       }
     });
-  } catch (error) {
+
+  } catch (error: any) {
     console.error('Error fetching products:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to fetch products' },

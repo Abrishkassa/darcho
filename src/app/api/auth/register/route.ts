@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/app/lib/prisma';
+import { supabase } from '@/app/lib/supabase';
 import bcrypt from 'bcrypt';
 
 export const runtime = 'nodejs';
@@ -8,7 +8,6 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     
-    // Validate required fields
     const requiredFields = ['email', 'phone', 'password', 'fullName', 'role'];
     const missingFields = requiredFields.filter(field => !body[field]);
     
@@ -20,14 +19,11 @@ export async function POST(request: NextRequest) {
     }
     
     // Check if user already exists
-    const existingUser = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { email: body.email },
-          { phone: body.phone }
-        ]
-      }
-    });
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('id')
+      .or(`email.eq.${body.email},phone.eq.${body.phone}`)
+      .single();
     
     if (existingUser) {
       return NextResponse.json(
@@ -40,37 +36,37 @@ export async function POST(request: NextRequest) {
     const hashedPassword = await bcrypt.hash(body.password, 10);
     
     // Create user
-    const user = await prisma.user.create({
-      data: {
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .insert({
         email: body.email,
         phone: body.phone,
-        passwordHash: hashedPassword,
+        password_hash: hashedPassword,
         role: body.role,
-        fullName: body.fullName,
-        isVerified: false, // Email verification can be added later
-      },
-    });
+        full_name: body.fullName,
+        is_verified: false,
+      })
+      .select()
+      .single();
+    
+    if (userError) throw userError;
     
     // Create role-specific profile
     if (body.role === 'farmer') {
-      await prisma.farmer.create({
-        data: {
-          userId: user.id,
-          farmName: body.farmName || '',
-          region: body.region || '',
-          residence: body.residence || '',
-          certifications: [],
-        },
+      await supabase.from('farmers').insert({
+        user_id: user.id,
+        farm_name: body.farmName || '',
+        region: body.region || '',
+        residence: body.residence || '',
+        certifications: [],
       });
     } else if (body.role === 'buyer') {
-      await prisma.buyer.create({
-        data: {
-          userId: user.id,
-          companyName: body.companyName || '',
-          businessType: body.businessType || '',
-          location: '',
-          preferredRegions: [],
-        },
+      await supabase.from('buyers').insert({
+        user_id: user.id,
+        company_name: body.companyName || '',
+        business_type: body.businessType || '',
+        location: '',
+        preferred_regions: [],
       });
     }
     
