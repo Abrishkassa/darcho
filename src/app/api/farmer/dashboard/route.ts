@@ -339,7 +339,6 @@ export async function POST(request: NextRequest) {
             region: data.region,
             residence: data.residence,
             farmSize: data.farmSize,
-            experience: data.experience,
             certifications: data.certifications
           }
         });
