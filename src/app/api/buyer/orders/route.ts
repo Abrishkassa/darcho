@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { getServerSession } from 'next-auth';
+import { supabase } from '@/app/lib/supabase';
 
-const prisma = new PrismaClient();
-
-// GET /api/buyer/orders - List buyer's orders
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession();
@@ -18,87 +15,57 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '10');
     const skip = (page - 1) * limit;
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      include: { buyer: true }
-    });
+    const { data: user } = await supabase
+      .from('users')
+      .select('*, buyers(*)')
+      .eq('email', session.user.email)
+      .single();
 
-    if (!user?.buyer) {
+    if (!user?.buyers) {
       return NextResponse.json({ error: 'Buyer not found' }, { status: 404 });
     }
 
-    const where: any = {
-      buyerId: user.buyer.id,
-      status: { not: 'cart' }
-    };
+    let query = supabase
+      .from('orders')
+      .select(`*, products(name, grade, farmers(farm_name, users(full_name, phone)))`, { count: 'exact' })
+      .eq('buyer_id', user.buyers.id)
+      .neq('status', 'cart')
+      .order('order_date', { ascending: false })
+      .range(skip, skip + limit - 1);
 
     if (status && status !== 'all') {
-      where.status = status;
+      query = query.eq('status', status);
     }
 
-    const [orders, total] = await Promise.all([
-      prisma.order.findMany({
-        where,
-        include: {
-          product: {
-            include: {
-              farmer: {
-                include: {
-                  user: { select: { fullName: true, phone: true } }
-                }
-              }
-            }
-          },
-          review: true
-        },
-        orderBy: { orderDate: 'desc' },
-        skip,
-        take: limit,
-      }),
-      prisma.order.count({ where })
-    ]);
+    const { data: orders, count, error } = await query;
+    if (error) throw error;
 
-    // Calculate statistics
-    const stats = {
-      total: await prisma.order.count({ 
-        where: { buyerId: user.buyer.id, status: { not: 'cart' } }
-      }),
-      delivered: await prisma.order.count({ 
-        where: { buyerId: user.buyer.id, status: 'delivered' }
-      }),
-      processing: await prisma.order.count({ 
-        where: { buyerId: user.buyer.id, status: 'processing' }
-      }),
-      shipped: await prisma.order.count({ 
-        where: { buyerId: user.buyer.id, status: 'shipped' }
-      }),
-      totalSpent: await prisma.order.aggregate({
-        where: { buyerId: user.buyer.id, status: { not: 'cart' } },
-        _sum: { totalPrice: true }
-      })
-    };
+    const { data: spentData } = await supabase
+      .from('orders')
+      .select('total_price')
+      .eq('buyer_id', user.buyers.id)
+      .neq('status', 'cart');
+
+    const totalSpent = spentData?.reduce((sum, o) => sum + (o.total_price || 0), 0) || 0;
 
     return NextResponse.json({
       success: true,
-      data: orders,
-      stats,
+      data: orders || [],
+      stats: { totalSpent },
       pagination: {
         page,
         limit,
-        total,
-        totalPages: Math.ceil(total / limit)
+        total: count || 0,
+        totalPages: Math.ceil((count || 0) / limit)
       }
     });
+
   } catch (error) {
     console.error('Error fetching orders:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to fetch orders' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to fetch orders' }, { status: 500 });
   }
 }
 
-// POST /api/buyer/orders - Checkout cart items
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession();
@@ -107,89 +74,58 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { shippingAddress, paymentMethod, notes } = body;
+    const { productId, farmerId, quantity, unitPrice, totalPrice, shippingAddress, deliveryDate, paymentMethod, notes } = body;
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      include: {
-        buyer: {
-          include: {
-            orders: {
-              where: { status: 'cart' },
-              include: { product: true }
-            }
-          }
-        }
-      }
-    });
+    const { data: user } = await supabase
+      .from('users')
+      .select('*, buyers(*)')
+      .eq('email', session.user.email)
+      .single();
 
-    if (!user?.buyer) {
+    if (!user?.buyers) {
       return NextResponse.json({ error: 'Buyer not found' }, { status: 404 });
     }
 
-    const cartItems = user.buyer.orders;
-    if (cartItems.length === 0) {
-      return NextResponse.json(
-        { error: 'Cart is empty' },
-        { status: 400 }
-      );
-    }
+    // Generate order number
+    const orderNumber = `ORD-${Date.now()}`;
 
-    // Check stock availability
-    //for (const item of cartItems) {
-      //if (item.product.quantity < item.quantity) {
-        //return NextResponse.json(
-         // { error: `Insufficient stock for ${item.product.name}` },
-        //  { status: 400 }
-      //  );
-   //   }
-   // }
+    // Create order
+    const { data: order, error } = await supabase
+      .from('orders')
+      .insert({
+        order_number: orderNumber,
+        product_id: productId,
+        buyer_id: user.buyers.id,
+        farmer_id: farmerId,
+        quantity,
+        unit_price: unitPrice,
+        total_price: totalPrice,
+        status: 'pending',
+        shipping_address: shippingAddress,
+        payment_method: paymentMethod,
+        payment_status: 'pending',
+        notes,
+        order_date: new Date().toISOString(),
+      })
+      .select()
+      .single();
 
-    // Update stock and create real orders
-    const updatedOrders = [];
-    for (const item of cartItems) {
-      // Update product stock
-      await prisma.product.update({
-        where: { id: item.productId! },
-        data: { quantity: { decrement: item.quantity } }
-      });
+    if (error) throw error;
 
-      // Update order status
-      const updatedOrder = await prisma.order.update({
-        where: { id: item.id },
-        data: {
-          status: 'pending',
-          shippingAddress,
-          paymentMethod,
-          notes,
-          orderDate: new Date()
-        },
-        include: {
-          product: {
-            include: {
-              farmer: {
-                include: {
-                  user: { select: { fullName: true } }
-                }
-              }
-            }
-          }
-        }
-      });
-
-      updatedOrders.push(updatedOrder);
-    }
+    // Update product quantity
+    await supabase.rpc('decrement_quantity', { 
+      product_id: productId, 
+      amount: quantity 
+    }).single();
 
     return NextResponse.json({
       success: true,
       message: 'Order placed successfully',
-      data: updatedOrders
+      data: order
     });
-  } catch (error) {
+
+  } catch (error: any) {
     console.error('Error placing order:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to place order' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
