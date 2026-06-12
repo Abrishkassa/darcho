@@ -1,11 +1,7 @@
-// app/api/farmer/dashboard/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { getServerSession } from 'next-auth';
+import { supabase } from '@/app/lib/supabase';
 
-const prisma = new PrismaClient();
-
-// GET /api/farmer/dashboard - Get farmer dashboard stats
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession();
@@ -13,197 +9,188 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      include: { farmer: true }
-    });
+    // Get user with farmer profile
+    const { data: user } = await supabase
+      .from('users')
+      .select('*, farmers(*)')
+      .eq('email', session.user.email)
+      .single();
 
-    if (!user?.farmer) {
+    if (!user?.farmers) {
       return NextResponse.json({ error: 'Farmer not found' }, { status: 404 });
     }
 
-    const [
-      totalProducts,
-      totalOrders,
-      activeOrders,
-      pendingOrders,
-      completedOrders,
-      totalRevenue,
-      monthlyRevenue,
-      monthlyOrders,
-      recentOrders,
-      lowStockProducts
-    ] = await Promise.all([
-      // Total products
-      prisma.product.count({
-        where: { farmerId: user.farmer.id }
-      }),
+    const farmerId = user.farmers.id;
 
-      // Total orders (excluding cart)
-      prisma.order.count({
-        where: {
-          farmerId: user.farmer.id,
-          status: { not: 'cart' }
-        }
-      }),
+    // Total products
+    const { count: totalProducts } = await supabase
+      .from('products')
+      .select('*', { count: 'exact', head: true })
+      .eq('farmer_id', farmerId);
 
-      // Active orders (pending + processing)
-      prisma.order.count({
-        where: {
-          farmerId: user.farmer.id,
-          status: { in: ['pending', 'confirmed', 'processing'] }
-        }
-      }),
+    // Total orders
+    const { count: totalOrders } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('farmer_id', farmerId)
+      .neq('status', 'cart');
 
-      // Pending orders (awaiting confirmation)
-      prisma.order.count({
-        where: {
-          farmerId: user.farmer.id,
-          status: 'pending'
-        }
-      }),
+    // Active orders
+    const { count: activeOrders } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('farmer_id', farmerId)
+      .in('status', ['pending', 'confirmed', 'processing']);
 
-      // Completed orders
-      prisma.order.count({
-        where: {
-          farmerId: user.farmer.id,
-          status: 'delivered'
-        }
-      }),
+    // Pending orders
+    const { count: pendingOrders } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('farmer_id', farmerId)
+      .eq('status', 'pending');
 
-      // Total revenue (from completed orders)
-      prisma.order.aggregate({
-        where: {
-          farmerId: user.farmer.id,
-          status: 'delivered'
-        },
-        _sum: { totalPrice: true }
-      }),
+    // Completed orders
+    const { count: completedOrders } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('farmer_id', farmerId)
+      .eq('status', 'delivered');
 
-      // Monthly revenue (last 30 days)
-      prisma.order.aggregate({
-        where: {
-          farmerId: user.farmer.id,
-          status: 'delivered',
-          orderDate: {
-            gte: new Date(new Date().setDate(new Date().getDate() - 30))
-          }
-        },
-        _sum: { totalPrice: true }
-      }),
+    // Total revenue
+    const { data: revenueData } = await supabase
+      .from('orders')
+      .select('total_price')
+      .eq('farmer_id', farmerId)
+      .eq('status', 'delivered');
 
-      // Monthly orders (last 30 days)
-      prisma.order.count({
-        where: {
-          farmerId: user.farmer.id,
-          status: { not: 'cart' },
-          orderDate: {
-            gte: new Date(new Date().setDate(new Date().getDate() - 30))
-          }
-        }
-      }),
+    const totalRevenue = revenueData?.reduce((sum, o) => sum + (o.total_price || 0), 0) || 0;
 
-      // Recent orders (last 10)
-      prisma.order.findMany({
-        where: {
-          farmerId: user.farmer.id,
-          status: { not: 'cart' }
-        },
-        include: {
-          product: true,
-          buyer: {
-            include: {
-              user: { select: { fullName: true, email: true } }
-            }
-          }
-        },
-        orderBy: { orderDate: 'desc' },
-        take: 10
-      }),
+    // Monthly revenue (last 30 days)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      // Low stock products (quantity < 10)
-      prisma.product.findMany({
-        where: {
-          farmerId: user.farmer.id,
-          quantity: { lt: 10 },
-          status: 'available'
-        },
-        orderBy: { quantity: 'asc' },
-        take: 5
-      })
-    ]);
+    const { data: monthlyRevenueData } = await supabase
+      .from('orders')
+      .select('total_price')
+      .eq('farmer_id', farmerId)
+      .eq('status', 'delivered')
+      .gte('order_date', thirtyDaysAgo.toISOString());
 
-    const stats = {
-      totalProducts,
-      totalOrders,
-      activeOrders,
-      pendingOrders,
-      completedOrders,
-      totalRevenue: totalRevenue._sum.totalPrice || 0,
-      monthlyRevenue: monthlyRevenue._sum.totalPrice || 0,
-      monthlyOrders,
-      totalReviews: 0, // Default value if Review model doesn't exist
-      averageRating: 4.5, // Default rating
-      unreadMessages: 0 // Default value if Message model doesn't exist
-    };
+    const monthlyRevenue = monthlyRevenueData?.reduce((sum, o) => sum + (o.total_price || 0), 0) || 0;
 
-    // Format recent orders for display
-    const formattedRecentOrders = recentOrders.map(order => ({
+    // Monthly orders count
+    const { count: monthlyOrders } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('farmer_id', farmerId)
+      .neq('status', 'cart')
+      .gte('order_date', thirtyDaysAgo.toISOString());
+
+    // Recent orders
+    const { data: recentOrders } = await supabase
+      .from('orders')
+      .select(`
+        *,
+        products ( name, grade ),
+        buyers (
+          users ( full_name, email )
+        )
+      `)
+      .eq('farmer_id', farmerId)
+      .neq('status', 'cart')
+      .order('order_date', { ascending: false })
+      .limit(10);
+
+    // Low stock products
+    const { data: lowStockProducts } = await supabase
+      .from('products')
+      .select('*')
+      .eq('farmer_id', farmerId)
+      .eq('status', 'available')
+      .lt('quantity', 10)
+      .order('quantity', { ascending: true })
+      .limit(5);
+
+    // All products for performance
+    const { data: productPerformance } = await supabase
+      .from('products')
+      .select('id, name, grade, quantity, price_per_unit')
+      .eq('farmer_id', farmerId)
+      .limit(10);
+
+    const formattedRecentOrders = (recentOrders || []).map(order => ({
       id: order.id,
       orderNumber: `ORD-${order.id.toString().padStart(6, '0')}`,
-      productName: order.product?.name || 'Unknown Product',
-      buyerName: order.buyer?.user?.fullName || 'Unknown Buyer',
-      buyerEmail: order.buyer?.user?.email || '',
+      productName: order.products?.name || 'Unknown Product',
+      buyerName: order.buyers?.users?.full_name || 'Unknown Buyer',
+      buyerEmail: order.buyers?.users?.email || '',
       quantity: order.quantity,
-      totalPrice: order.totalPrice,
+      totalPrice: order.total_price,
       status: order.status,
-      orderDate: order.orderDate,
-      deliveryStatus: order.deliveryStatus || 'Pending',
-      paymentStatus: order.paymentStatus || 'Pending'
+      orderDate: order.order_date,
+      deliveryStatus: order.delivery_status || 'Pending',
+      paymentStatus: order.payment_status || 'Pending'
     }));
 
-    // Format low stock products
-    const formattedLowStockProducts = lowStockProducts.map(product => ({
+    const formattedLowStock = (lowStockProducts || []).map(product => ({
       id: product.id,
       name: product.name,
       grade: product.grade || '',
       quantity: product.quantity,
-      //price: product.price,
+      price: product.price_per_unit,
       status: product.status,
-      //origin: product.origin || '',
+      origin: product.origin_region || '',
       altitude: product.altitude || ''
     }));
 
-    // Get sales data for charts
-    const salesData = await getSalesData(user.farmer.id);
-    const productPerformance = await getProductPerformance(user.farmer.id);
+    const formattedProductPerformance = (productPerformance || []).map(product => ({
+      productId: product.id,
+      productName: product.name,
+      grade: product.grade || '',
+      price: product.price_per_unit,
+      totalSold: 0,
+      totalRevenue: 0,
+      orderCount: 0
+    }));
 
     return NextResponse.json({
       success: true,
       data: {
-        stats,
+        stats: {
+          totalProducts: totalProducts || 0,
+          totalOrders: totalOrders || 0,
+          activeOrders: activeOrders || 0,
+          pendingOrders: pendingOrders || 0,
+          completedOrders: completedOrders || 0,
+          totalRevenue,
+          monthlyRevenue,
+          monthlyOrders: monthlyOrders || 0,
+          totalReviews: 0,
+          averageRating: user.farmers.avg_rating || 0,
+          unreadMessages: 0
+        },
         recentOrders: formattedRecentOrders,
-        lowStockProducts: formattedLowStockProducts,
-        topBuyers: [], // Empty array if function fails
-        recentMessages: [], // Empty array if Message model doesn't exist
-        salesData,
-        productPerformance,
+        lowStockProducts: formattedLowStock,
+        topBuyers: [],
+        recentMessages: [],
+        salesData: [],
+        productPerformance: formattedProductPerformance,
         farmerProfile: {
-          ...user.farmer,
-          farmName: user.farmer.farmName || '',
-          region: user.farmer.region || '',
-          residence: user.farmer.residence || '',
-          farmSize: user.farmer.farmSize || '',
-         // experience: user.farmer.experience || 0,
-          certifications: user.farmer.certifications || [],
+          ...user.farmers,
+          farmName: user.farmers.farm_name || '',
+          region: user.farmers.region || '',
+          residence: user.farmers.residence || '',
+          farmSize: user.farmers.farm_size || '',
+          certifications: user.farmers.certifications || [],
           user: {
-            fullName: user.fullName,
+            fullName: user.full_name,
             email: user.email,
             phone: user.phone || ''
           }
         }
       }
     });
+
   } catch (error) {
     console.error('Error fetching farmer dashboard data:', error);
     return NextResponse.json(
@@ -213,102 +200,6 @@ export async function GET(request: NextRequest) {
   }
 }
 
-async function getSalesData(farmerId: number) {
-  try {
-    const sixMonthsAgo = new Date();
-    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-
-    const monthlySales = await prisma.order.groupBy({
-      by: ['orderDate'],
-      where: {
-        farmerId,
-        status: { not: 'cart' },
-        orderDate: { gte: sixMonthsAgo }
-      },
-      _sum: { totalPrice: true },
-      _count: true
-    });
-
-    // Group by month
-    const monthlyData: Record<string, { total: number; orders: number }> = {};
-    
-    monthlySales.forEach(sale => {
-      const month = sale.orderDate.toLocaleString('default', { month: 'short', year: 'numeric' });
-      if (!monthlyData[month]) {
-        monthlyData[month] = { total: 0, orders: 0 };
-      }
-      monthlyData[month].total += (sale._sum.totalPrice || 0);
-      monthlyData[month].orders += sale._count;
-    });
-
-    return Object.entries(monthlyData).map(([month, data]) => ({
-      month,
-      total: data.total,
-      orders: data.orders
-    }));
-  } catch (error) {
-    console.log('Error fetching sales data:', error);
-    return [];
-  }
-}
-
-async function getProductPerformance(farmerId: number) {
-  try {
-    // Get product performance data
-    const productPerformance = await prisma.order.groupBy({
-      by: ['productId'],
-      where: {
-        farmerId,
-        status: { not: 'cart' },
-        productId: { not: null } // Only include orders with productId
-      },
-      _count: true,
-      _sum: { 
-        quantity: true,
-        totalPrice: true 
-      },
-      orderBy: { _sum: { totalPrice: 'desc' } },
-      take: 10
-    });
-
-    // Fetch product details for each productId
-    const productPerformanceDetails = await Promise.all(
-      productPerformance.map(async (item) => {
-        // Check if productId is not null
-        if (item.productId === null) {
-          return null;
-        }
-
-        try {
-          const product = await prisma.product.findUnique({
-            where: { id: item.productId } // productId is guaranteed to be number here
-          });
-
-          return {
-            productId: product?.id,
-            productName: product?.name || 'Unknown Product',
-            grade: product?.grade || '',
-            //price: product?.price || 0,
-            totalSold: item._sum.quantity || 0,
-            totalRevenue: item._sum.totalPrice || 0,
-            orderCount: item._count
-          };
-        } catch (error) {
-          console.log(`Error fetching product ${item.productId}:`, error);
-          return null;
-        }
-      })
-    );
-
-    // Filter out null values
-    return productPerformanceDetails.filter(item => item !== null);
-  } catch (error) {
-    console.log('Error fetching product performance:', error);
-    return [];
-  }
-}
-
-// POST /api/farmer/dashboard - Update farmer profile or product
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession();
@@ -319,12 +210,13 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { action, data } = body;
 
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-      include: { farmer: true }
-    });
+    const { data: user } = await supabase
+      .from('users')
+      .select('*, farmers(*)')
+      .eq('email', session.user.email)
+      .single();
 
-    if (!user?.farmer) {
+    if (!user?.farmers) {
       return NextResponse.json({ error: 'Farmer not found' }, { status: 404 });
     }
 
@@ -332,60 +224,68 @@ export async function POST(request: NextRequest) {
 
     switch (action) {
       case 'updateProfile':
-        result = await prisma.farmer.update({
-          where: { id: user.farmer.id },
-          data: {
-            farmName: data.farmName,
+        const { data: updatedProfile } = await supabase
+          .from('farmers')
+          .update({
+            farm_name: data.farmName,
             region: data.region,
             residence: data.residence,
-            farmSize: data.farmSize,
+            farm_size: data.farmSize,
             certifications: data.certifications
-          }
-        });
+          })
+          .eq('id', user.farmers.id)
+          .select()
+          .single();
+        result = updatedProfile;
         break;
 
       case 'updateProduct':
-        result = await prisma.product.update({
-          where: { 
-            id: data.id,
-            farmerId: user.farmer.id 
-          },
-          data: {
+        const { data: updatedProduct } = await supabase
+          .from('products')
+          .update({
             name: data.name,
             grade: data.grade,
             quantity: data.quantity,
-            price: data.price,
+            price_per_unit: data.price,
             status: data.status,
-            origin: data.origin,
+            origin_region: data.origin,
             altitude: data.altitude,
             description: data.description,
             certifications: data.certifications
-          }
-        });
+          })
+          .eq('id', data.id)
+          .eq('farmer_id', user.farmers.id)
+          .select()
+          .single();
+        result = updatedProduct;
         break;
 
       case 'addProduct':
-        result = await prisma.product.create({
-          data: {
+        const { data: newProduct } = await supabase
+          .from('products')
+          .insert({
             ...data,
-            farmerId: user.farmer.id,
+            farmer_id: user.farmers.id,
             status: 'available'
-          }
-        });
+          })
+          .select()
+          .single();
+        result = newProduct;
         break;
 
       case 'updateOrderStatus':
-        result = await prisma.order.update({
-          where: { 
-            id: data.orderId,
-            farmerId: user.farmer.id 
-          },
-          data: {
+        const { data: updatedOrder } = await supabase
+          .from('orders')
+          .update({
             status: data.status,
-            deliveryStatus: data.deliveryStatus,
-            paymentStatus: data.paymentStatus
-          }
-        });
+            delivery_status: data.deliveryStatus,
+            payment_status: data.paymentStatus
+          })
+          .eq('id', data.orderId)
+          .eq('farmer_id', user.farmers.id)
+          .select()
+          .single();
+        result = updatedOrder;
         break;
 
       default:
@@ -400,6 +300,7 @@ export async function POST(request: NextRequest) {
       data: result,
       message: `${action} updated successfully`
     });
+
   } catch (error) {
     console.error('Error updating farmer dashboard:', error);
     return NextResponse.json(
