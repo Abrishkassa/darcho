@@ -1,0 +1,92 @@
+diff --git a/src/app/api/auth/register/route.ts b/src/app/api/auth/register/route.ts
+index eecec83..f9eabea 100644
+--- a/src/app/api/auth/register/route.ts
++++ b/src/app/api/auth/register/route.ts
+@@ -53,21 +53,39 @@ export async function POST(request: NextRequest) {
+     
+     // Create role-specific profile
+     if (body.role === 'farmer') {
+-      await supabase.from('farmers').insert({
++      const { error: farmerError } = await supabase.from('farmers').insert({
+         user_id: user.id,
+         farm_name: body.farmName || '',
+         region: body.region || '',
+         residence: body.residence || '',
+         certifications: [],
+       });
++
++      if (farmerError) {
++        console.error('Farmer profile creation failed:', farmerError);
++        await supabase.from('users').delete().eq('id', user.id);
++        return NextResponse.json(
++          { success: false, error: `Registration failed while creating farmer profile: ${farmerError.message}` },
++          { status: 500 }
++        );
++      }
+     } else if (body.role === 'buyer') {
+-      await supabase.from('buyers').insert({
++      const { error: buyerError } = await supabase.from('buyers').insert({
+         user_id: user.id,
+         company_name: body.companyName || '',
+         business_type: body.businessType || '',
+         location: '',
+         preferred_regions: [],
+       });
++
++      if (buyerError) {
++        console.error('Buyer profile creation failed:', buyerError);
++        await supabase.from('users').delete().eq('id', user.id);
++        return NextResponse.json(
++          { success: false, error: `Registration failed while creating buyer profile: ${buyerError.message}` },
++          { status: 500 }
++        );
++      }
+     }
+     
+     return NextResponse.json({
+diff --git a/src/app/api/register/route.ts b/src/app/api/register/route.ts
+index eecec83..f9eabea 100644
+--- a/src/app/api/register/route.ts
++++ b/src/app/api/register/route.ts
+@@ -53,21 +53,39 @@ export async function POST(request: NextRequest) {
+     
+     // Create role-specific profile
+     if (body.role === 'farmer') {
+-      await supabase.from('farmers').insert({
++      const { error: farmerError } = await supabase.from('farmers').insert({
+         user_id: user.id,
+         farm_name: body.farmName || '',
+         region: body.region || '',
+         residence: body.residence || '',
+         certifications: [],
+       });
++
++      if (farmerError) {
++        console.error('Farmer profile creation failed:', farmerError);
++        await supabase.from('users').delete().eq('id', user.id);
++        return NextResponse.json(
++          { success: false, error: `Registration failed while creating farmer profile: ${farmerError.message}` },
++          { status: 500 }
++        );
++      }
+     } else if (body.role === 'buyer') {
+-      await supabase.from('buyers').insert({
++      const { error: buyerError } = await supabase.from('buyers').insert({
+         user_id: user.id,
+         company_name: body.companyName || '',
+         business_type: body.businessType || '',
+         location: '',
+         preferred_regions: [],
+       });
++
++      if (buyerError) {
++        console.error('Buyer profile creation failed:', buyerError);
++        await supabase.from('users').delete().eq('id', user.id);
++        return NextResponse.json(
++          { success: false, error: `Registration failed while creating buyer profile: ${buyerError.message}` },
++          { status: 500 }
++        );
++      }
+     }
+     
+     return NextResponse.json({

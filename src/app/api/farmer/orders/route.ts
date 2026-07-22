@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/app/lib/prisma';
+import { supabase } from '@/app/lib/supabase';
 import { verifyFarmerSession } from '@/app/lib/auth';
 
 export const runtime = 'nodejs';
@@ -7,69 +7,55 @@ export const runtime = 'nodejs';
 // GET /api/farmer/orders - Get farmer's orders
 export async function GET(request: NextRequest) {
   try {
-    // Verify session
     const session = await verifyFarmerSession(request);
-    
-    if (!session.isValid || session.userRole !== 'farmer') {
+
+    if (!session.isValid || !session.farmerId) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized - Farmer access required' },
+        {
+          success: false,
+          error: session.error || 'Unauthorized - Farmer access required',
+          orders: [],
+          stats: { total_orders: 0, confirmed_orders: 0, total_quantity: 0 },
+        },
         { status: 401 }
       );
     }
-    
+
     const farmerId = session.farmerId;
-    
-    // Get orders for this farmer
-    const orders = await prisma.order.findMany({
-      where: { farmerId },
-      include: {
-        product: {
-          select: {
-            name: true,
-            grade: true,
-            category: true,
-          }
-        },
-        buyer: {
-          include: {
-            user: {
-              select: {
-                fullName: true,
-                phone: true,
-                email: true,
-              }
-            }
-          }
-        }
-      },
-      orderBy: { orderDate: 'desc' },
-    });
-    
-    // Format orders for frontend
-    const formattedOrders = orders.map(order => ({
+
+    const { data: orders, error } = await supabase
+      .from('orders')
+      .select(
+        `*,
+        products ( name, grade, category ),
+        buyers ( company_name, users ( full_name, phone, email ) )`
+      )
+      .eq('farmer_id', farmerId)
+      .neq('status', 'cart')
+      .order('order_date', { ascending: false });
+
+    if (error) throw error;
+
+    const formattedOrders = (orders || []).map((order: any) => ({
       id: order.id,
-      order_number: order.orderNumber,
-      buyer: order.buyer.user.fullName || order.buyer.companyName || 'Unknown Buyer',
-      product: order.product?.name || 'Unknown Product',
+      order_number: order.order_number,
+      buyer: order.buyers?.users?.full_name || order.buyers?.company_name || 'Unknown Buyer',
+      product: order.products?.name || 'Unknown Product',
       quantity: order.quantity,
-      total: order.totalPrice,
+      total: order.total_price,
       status: order.status,
-      delivery: order.deliveryStatus,
-      date: order.orderDate.toISOString().split('T')[0],
-      payment_status: order.paymentStatus,
+      delivery: order.delivery_status,
+      date: order.order_date ? new Date(order.order_date).toISOString().split('T')[0] : null,
+      payment_status: order.payment_status,
       notes: order.notes,
     }));
-    
-    // Calculate stats
-    const totalOrders = orders.length;
-    const totalQuantity = orders.reduce((sum, order) => sum + order.quantity, 0);
-    const confirmedOrders = orders.filter(order => 
-      order.status === 'confirmed' || 
-      order.status === 'processing' || 
-      order.status === 'shipped' || 
-      order.status === 'delivered'
+
+    const totalOrders = formattedOrders.length;
+    const totalQuantity = formattedOrders.reduce((sum, o) => sum + (o.quantity || 0), 0);
+    const confirmedOrders = formattedOrders.filter((o) =>
+      ['confirmed', 'processing', 'shipped', 'delivered'].includes(o.status)
     ).length;
-    
+
     return NextResponse.json({
       success: true,
       orders: formattedOrders,
@@ -79,84 +65,66 @@ export async function GET(request: NextRequest) {
         total_quantity: totalQuantity,
       },
     });
-    
   } catch (error: any) {
     console.error('Error fetching farmer orders:', error);
     return NextResponse.json(
-      { 
-        success: false, 
+      {
+        success: false,
         error: error.message,
         orders: [],
-        stats: {
-          total_orders: 0,
-          confirmed_orders: 0,
-          total_quantity: 0,
-        }
+        stats: { total_orders: 0, confirmed_orders: 0, total_quantity: 0 },
       },
       { status: 500 }
     );
   }
 }
 
-// PUT /api/farmer/orders/:id/status - Update order status
+// PUT /api/farmer/orders - Update order status (order belongs to the logged-in farmer)
 export async function PUT(request: NextRequest) {
   try {
     const session = await verifyFarmerSession(request);
-    
-    if (!session.isValid || session.userRole !== 'farmer') {
+
+    if (!session.isValid || !session.farmerId) {
       return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
+        { success: false, error: session.error || 'Unauthorized' },
         { status: 401 }
       );
     }
-    
+
     const { orderId, status, deliveryStatus } = await request.json();
-    
+
     if (!orderId || !status) {
       return NextResponse.json(
         { success: false, error: 'Order ID and status are required' },
         { status: 400 }
       );
     }
-    
-    // Verify the order belongs to this farmer
-    const order = await prisma.order.findFirst({
-      where: {
-        id: parseInt(orderId),
-        farmerId: session.farmerId,
-      },
-    });
-    
-    if (!order) {
-      return NextResponse.json(
-        { success: false, error: 'Order not found or unauthorized' },
-        { status: 404 }
-      );
+
+    const updatePayload: Record<string, any> = {
+      status,
+      delivery_status: deliveryStatus || status,
+    };
+    if (status === 'confirmed') updatePayload.confirmed_date = new Date().toISOString();
+    if (status === 'shipped') updatePayload.shipped_date = new Date().toISOString();
+    if (status === 'delivered') updatePayload.delivered_date = new Date().toISOString();
+
+    const { data: updatedOrder, error } = await supabase
+      .from('orders')
+      .update(updatePayload)
+      .eq('id', orderId)
+      .eq('farmer_id', session.farmerId)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    if (!updatedOrder) {
+      return NextResponse.json({ success: false, error: 'Order not found or unauthorized' }, { status: 404 });
     }
-    
-    // Update order
-    const updatedOrder = await prisma.order.update({
-      where: { id: parseInt(orderId) },
-      data: {
-        status,
-        deliveryStatus: deliveryStatus || status,
-        ...(status === 'confirmed' && { confirmedDate: new Date() }),
-        ...(status === 'shipped' && { shippedDate: new Date() }),
-        ...(status === 'delivered' && { deliveredDate: new Date() }),
-      },
-    });
-    
-    return NextResponse.json({
-      success: true,
-      message: 'Order updated successfully',
-      order: updatedOrder,
-    });
-    
+
+    return NextResponse.json({ success: true, message: 'Order updated successfully', order: updatedOrder });
   } catch (error: any) {
     console.error('Error updating order:', error);
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

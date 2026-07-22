@@ -10,40 +10,75 @@ interface Order {
   status: string;
 }
 
+const STATUS_OPTIONS = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"];
+
 export default function FarmerOrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
+  const [updatingId, setUpdatingId] = useState<number | string | null>(null);
+  const [updateError, setUpdateError] = useState<string>("");
+
+  async function loadOrders() {
+    try {
+      const res = await fetch("/api/farmer/orders");
+
+      if (!res.ok) {
+        throw new Error(`HTTP error! Status: ${res.status}`);
+      }
+
+      const data = await res.json();
+
+      // Handle different response formats
+      if (data.orders && Array.isArray(data.orders)) {
+        setOrders(data.orders);
+      } else if (Array.isArray(data)) {
+        setOrders(data);
+      } else {
+        throw new Error("Invalid data format received");
+      }
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to load orders";
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    async function loadOrders() {
-      try {
-        const res = await fetch("/api/farmer/orders");
-        
-        if (!res.ok) {
-          throw new Error(`HTTP error! Status: ${res.status}`);
-        }
-        
-        const data = await res.json();
-
-        // Handle different response formats
-        if (data.orders && Array.isArray(data.orders)) {
-          setOrders(data.orders);
-        } else if (Array.isArray(data)) {
-          setOrders(data);
-        } else {
-          throw new Error("Invalid data format received");
-        }
-      } catch (err: unknown) {
-        const errorMessage = err instanceof Error ? err.message : "Failed to load orders";
-        setError(errorMessage);
-      } finally {
-        setLoading(false);
-      }
-    }
-
     loadOrders();
   }, []);
+
+  const handleStatusChange = async (orderId: number | string, newStatus: string) => {
+    const previousOrders = orders;
+    setUpdateError("");
+    setUpdatingId(orderId);
+
+    // Optimistic update
+    setOrders((prev) =>
+      prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o))
+    );
+
+    try {
+      const res = await fetch("/api/farmer/orders", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, status: newStatus, deliveryStatus: newStatus }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to update order status");
+      }
+    } catch (err: unknown) {
+      // Revert on failure
+      setOrders(previousOrders);
+      setUpdateError(err instanceof Error ? err.message : "Failed to update order status");
+    } finally {
+      setUpdatingId(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -109,6 +144,12 @@ export default function FarmerOrdersPage() {
         </div>
       </div>
 
+      {updateError && (
+        <div className="mb-4 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+          {updateError}
+        </div>
+      )}
+
       {/* Order Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
         <div className="p-4 bg-white rounded-xl shadow border border-amber-100">
@@ -167,9 +208,21 @@ export default function FarmerOrdersPage() {
                       <span className="text-gray-500 ml-1">kg</span>
                     </td>
                     <td className="py-4 px-6">
-                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusColor}`}>
-                        {order.status}
-                      </span>
+                      <select
+                        value={order.status}
+                        disabled={updatingId === order.id}
+                        onChange={(e) => handleStatusChange(order.id, e.target.value)}
+                        className={`px-3 py-1.5 rounded-full text-sm font-medium border-0 cursor-pointer disabled:opacity-50 disabled:cursor-wait ${statusColor}`}
+                      >
+                        {STATUS_OPTIONS.map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt.charAt(0).toUpperCase() + opt.slice(1)}
+                          </option>
+                        ))}
+                      </select>
+                      {updatingId === order.id && (
+                        <span className="ml-2 text-xs text-gray-400">Saving...</span>
+                      )}
                     </td>
                   </tr>
                 );
@@ -187,7 +240,7 @@ export default function FarmerOrdersPage() {
                 Export
               </button>
               <button 
-                onClick={() => window.location.reload()}
+                onClick={() => loadOrders()}
                 className="text-amber-700 hover:text-amber-800 font-medium"
               >
                 Refresh

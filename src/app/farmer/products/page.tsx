@@ -45,23 +45,6 @@ export default function ProductsPage() {
   const [apiResponse, setApiResponse] = useState<ApiResponse | null>(null);
   const [farmerId, setFarmerId] = useState<string | null>(null);
 
-  const getAuthHeader = () => {
-    // Get session ID from localStorage
-    const sessionId = localStorage.getItem("session_id");
-    const authHeader = localStorage.getItem("auth_header");
-    
-    console.log("Auth debug:", { sessionId, authHeader });
-    
-    // Use either the session_id to create header or use stored auth_header
-    if (authHeader) {
-      return authHeader;
-    } else if (sessionId) {
-      return `Session ${sessionId}`;
-    }
-    
-    return null;
-  };
-
   const fetchProducts = async (): Promise<void> => {
     try {
       setLoading(true);
@@ -69,23 +52,7 @@ export default function ProductsPage() {
       
       console.log('🔄 Fetching products from API...');
       
-      // Get authentication header
-      const authHeader = getAuthHeader();
-      
-      if (!authHeader) {
-        throw new Error("Not authenticated. Please log in again.");
-      }
-      
-      console.log('Using auth header:', authHeader.substring(0, 30) + '...');
-      
-      const headers = {
-        "Authorization": authHeader,
-        "Content-Type": "application/json"
-      };
-      
-      const response = await fetch("/api/farmer/products", {
-        headers: headers
-      });
+      const response = await fetch("/api/farmer/products");
       
       console.log('📡 Response status:', response.status, response.statusText);
       
@@ -126,45 +93,13 @@ export default function ProductsPage() {
       const errorMessage = err instanceof Error ? err.message : "Failed to fetch products";
       setError(errorMessage);
       console.error('❌ Fetch error:', err);
-      
-      // Try to get farmer ID from localStorage as fallback
-      const storedFarmerId = localStorage.getItem("farmer_id");
-      if (storedFarmerId) {
-        setFarmerId(storedFarmerId);
-      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    // Check if user is authenticated before fetching
-    const checkAuth = () => {
-      const sessionId = localStorage.getItem("session_id");
-      const userRole = localStorage.getItem("user_role");
-      
-      if (!sessionId) {
-        setError("You are not logged in. Please log in first.");
-        setLoading(false);
-        return;
-      }
-      
-      if (userRole !== "farmer") {
-        setError("Access denied. This page is for farmers only.");
-        setLoading(false);
-        return;
-      }
-      
-      // Get farmer ID from localStorage
-      const storedFarmerId = localStorage.getItem("farmer_id");
-      if (storedFarmerId) {
-        setFarmerId(storedFarmerId);
-      }
-      
-      fetchProducts();
-    };
-    
-    checkAuth();
+    fetchProducts();
   }, []);
 
   // Calculate totals

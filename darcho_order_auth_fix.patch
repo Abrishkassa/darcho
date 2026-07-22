@@ -1,0 +1,116 @@
+diff --git a/src/app/api/buyer/orders/route.ts b/src/app/api/buyer/orders/route.ts
+index a289a6c..fa1beb7 100644
+--- a/src/app/api/buyer/orders/route.ts
++++ b/src/app/api/buyer/orders/route.ts
+@@ -17,18 +17,28 @@ export async function GET(request: NextRequest) {
+ 
+     const { data: user } = await supabase
+       .from('users')
+-      .select('*, buyers(*)')
++      .select('*')
+       .eq('email', session.user.email)
+       .single();
+ 
+-    if (!user?.buyers) {
++    if (!user) {
++      return NextResponse.json({ error: 'Buyer not found' }, { status: 404 });
++    }
++
++    const { data: buyer } = await supabase
++      .from('buyers')
++      .select('*')
++      .eq('user_id', user.id)
++      .single();
++
++    if (!buyer) {
+       return NextResponse.json({ error: 'Buyer not found' }, { status: 404 });
+     }
+ 
+     let query = supabase
+       .from('orders')
+       .select(`*, products(name, grade, farmers(farm_name, users(full_name, phone)))`, { count: 'exact' })
+-      .eq('buyer_id', user.buyers.id)
++      .eq('buyer_id', buyer.id)
+       .neq('status', 'cart')
+       .order('order_date', { ascending: false })
+       .range(skip, skip + limit - 1);
+@@ -43,7 +53,7 @@ export async function GET(request: NextRequest) {
+     const { data: spentData } = await supabase
+       .from('orders')
+       .select('total_price')
+-      .eq('buyer_id', user.buyers.id)
++      .eq('buyer_id', buyer.id)
+       .neq('status', 'cart');
+ 
+     const totalSpent = spentData?.reduce((sum, o) => sum + (o.total_price || 0), 0) || 0;
+@@ -78,11 +88,21 @@ export async function POST(request: NextRequest) {
+ 
+     const { data: user } = await supabase
+       .from('users')
+-      .select('*, buyers(*)')
++      .select('*')
+       .eq('email', session.user.email)
+       .single();
+ 
+-    if (!user?.buyers) {
++    if (!user) {
++      return NextResponse.json({ error: 'Buyer not found' }, { status: 404 });
++    }
++
++    const { data: buyer } = await supabase
++      .from('buyers')
++      .select('*')
++      .eq('user_id', user.id)
++      .single();
++
++    if (!buyer) {
+       return NextResponse.json({ error: 'Buyer not found' }, { status: 404 });
+     }
+ 
+@@ -95,7 +115,7 @@ export async function POST(request: NextRequest) {
+       .insert({
+         order_number: orderNumber,
+         product_id: productId,
+-        buyer_id: user.buyers.id,
++        buyer_id: buyer.id,
+         farmer_id: farmerId,
+         quantity,
+         unit_price: unitPrice,
+diff --git a/src/app/lib/auth.ts b/src/app/lib/auth.ts
+index c5ef543..7e6d6a9 100644
+--- a/src/app/lib/auth.ts
++++ b/src/app/lib/auth.ts
+@@ -10,19 +10,29 @@ export async function verifyFarmerSession(request: NextRequest) {
+       return { isValid: false, error: 'No session found', farmerId: null };
+     }
+ 
+-    const { data: user, error } = await supabase
++    const { data: user, error: userError } = await supabase
+       .from('users')
+-      .select('*, farmers(*)')
++      .select('*')
+       .eq('email', session.user.email)
+       .single();
+ 
+-    if (error || !user || !user.farmers) {
++    if (userError || !user) {
+       return { isValid: false, error: 'Invalid session', farmerId: null };
+     }
+ 
++    const { data: farmer, error: farmerError } = await supabase
++      .from('farmers')
++      .select('*')
++      .eq('user_id', user.id)
++      .single();
++
++    if (farmerError || !farmer) {
++      return { isValid: false, error: 'Not a farmer account', farmerId: null };
++    }
++
+     return {
+       isValid: true,
+-      farmerId: user.farmers.id,
++      farmerId: farmer.id,
+       userId: user.id,
+       userRole: user.role,
+     };

@@ -1,0 +1,448 @@
+diff --git a/src/app/buyer/orders/page.tsx b/src/app/buyer/orders/page.tsx
+new file mode 100644
+index 0000000..850a05a
+--- /dev/null
++++ b/src/app/buyer/orders/page.tsx
+@@ -0,0 +1,290 @@
++"use client";
++
++import { useEffect, useState } from "react";
++import { useSession } from "next-auth/react";
++import { redirect } from "next/navigation";
++import Link from "next/link";
++import {
++  ArrowLeft,
++  Loader2,
++  RefreshCw,
++  Moon,
++  Sun,
++  Coffee,
++} from "lucide-react";
++
++interface OrderRow {
++  id: number;
++  order_number: string;
++  quantity: number;
++  unit_price: number;
++  total_price: number;
++  status: string;
++  payment_status: string;
++  order_date: string;
++  products?: {
++    name: string;
++    grade: string;
++    farmers?: {
++      farm_name: string;
++      users?: { full_name: string; phone: string };
++    };
++  };
++}
++
++const STATUS_STYLES: Record<string, string> = {
++  pending: "bg-yellow-100 text-yellow-700",
++  confirmed: "bg-blue-100 text-blue-700",
++  processing: "bg-purple-100 text-purple-700",
++  shipped: "bg-indigo-100 text-indigo-700",
++  delivered: "bg-green-100 text-green-700",
++  cancelled: "bg-red-100 text-red-700",
++};
++
++export default function BuyerOrdersPage() {
++  const { data: session, status: sessionStatus } = useSession();
++  const [darkMode, setDarkMode] = useState(false);
++  const [orders, setOrders] = useState<OrderRow[]>([]);
++  const [loading, setLoading] = useState(true);
++  const [error, setError] = useState<string | null>(null);
++  const [statusFilter, setStatusFilter] = useState<string>("all");
++
++  useEffect(() => {
++    if (sessionStatus === "unauthenticated") {
++      redirect("/login");
++    }
++  }, [sessionStatus]);
++
++  const fetchOrders = async () => {
++    try {
++      setLoading(true);
++      setError(null);
++
++      const params = statusFilter !== "all" ? `?status=${statusFilter}` : "";
++      const res = await fetch(`/api/buyer/orders${params}`);
++      const result = await res.json();
++
++      if (!res.ok || !result.success) {
++        throw new Error(result.error || "Failed to load orders");
++      }
++
++      setOrders(result.data || []);
++    } catch (err) {
++      setError(err instanceof Error ? err.message : "Failed to load orders");
++    } finally {
++      setLoading(false);
++    }
++  };
++
++  useEffect(() => {
++    if (session) {
++      fetchOrders();
++    }
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [session, statusFilter]);
++
++  const formatCurrency = (amount: number) =>
++    new Intl.NumberFormat("en-ET", {
++      style: "currency",
++      currency: "ETB",
++      minimumFractionDigits: 0,
++    }).format(amount || 0);
++
++  const formatDate = (dateString: string) => {
++    if (!dateString) return "-";
++    return new Date(dateString).toLocaleDateString("en-US", {
++      month: "short",
++      day: "numeric",
++      year: "numeric",
++    });
++  };
++
++  const themeClass = darkMode
++    ? "bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-gray-100"
++    : "bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 text-gray-900";
++
++  const cardClass = darkMode
++    ? "bg-gray-800/50 border-gray-700"
++    : "bg-white border-gray-200";
++
++  if (sessionStatus === "loading") {
++    return (
++      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-amber-50 to-orange-50">
++        <Loader2 className="w-10 h-10 text-amber-600 animate-spin" />
++      </div>
++    );
++  }
++
++  const totalSpent = orders.reduce((sum, o) => sum + (o.total_price || 0), 0);
++  const pendingCount = orders.filter((o) => o.status === "pending").length;
++
++  return (
++    <div className={`min-h-screen ${themeClass} transition-colors duration-300`}>
++      <div className="max-w-6xl mx-auto p-6">
++        {/* Header */}
++        <div className="flex items-center justify-between mb-8">
++          <div className="flex items-center gap-4">
++            <Link
++              href="/buyer/dashboard"
++              className={`p-2 rounded-lg border ${cardClass} hover:opacity-80 transition`}
++            >
++              <ArrowLeft className="w-5 h-5" />
++            </Link>
++            <div>
++              <h1 className="text-2xl font-bold">My Orders</h1>
++              <p className={darkMode ? "text-gray-400" : "text-gray-600"}>
++                Track and manage your coffee orders
++              </p>
++            </div>
++          </div>
++          <button
++            onClick={() => setDarkMode(!darkMode)}
++            className={`p-2 rounded-lg border ${cardClass}`}
++          >
++            {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
++          </button>
++        </div>
++
++        {/* Stats */}
++        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
++          <div className={`p-5 rounded-2xl border shadow-lg ${cardClass}`}>
++            <p className={darkMode ? "text-gray-400 text-sm" : "text-gray-600 text-sm"}>
++              Total Orders
++            </p>
++            <p className="text-2xl font-bold text-amber-500">{orders.length}</p>
++          </div>
++          <div className={`p-5 rounded-2xl border shadow-lg ${cardClass}`}>
++            <p className={darkMode ? "text-gray-400 text-sm" : "text-gray-600 text-sm"}>
++              Pending
++            </p>
++            <p className="text-2xl font-bold text-yellow-500">{pendingCount}</p>
++          </div>
++          <div className={`p-5 rounded-2xl border shadow-lg ${cardClass}`}>
++            <p className={darkMode ? "text-gray-400 text-sm" : "text-gray-600 text-sm"}>
++              Total Spent
++            </p>
++            <p className="text-2xl font-bold text-green-500">{formatCurrency(totalSpent)}</p>
++          </div>
++        </div>
++
++        {/* Filter + Refresh */}
++        <div className="flex items-center justify-between mb-4">
++          <select
++            value={statusFilter}
++            onChange={(e) => setStatusFilter(e.target.value)}
++            className={`px-4 py-2 rounded-lg border text-sm ${cardClass}`}
++          >
++            <option value="all">All statuses</option>
++            <option value="pending">Pending</option>
++            <option value="confirmed">Confirmed</option>
++            <option value="processing">Processing</option>
++            <option value="shipped">Shipped</option>
++            <option value="delivered">Delivered</option>
++            <option value="cancelled">Cancelled</option>
++          </select>
++          <button
++            onClick={fetchOrders}
++            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition text-sm font-medium"
++          >
++            <RefreshCw className="w-4 h-4" />
++            Refresh
++          </button>
++        </div>
++
++        {/* Content */}
++        {loading ? (
++          <div className="flex flex-col items-center justify-center py-20">
++            <Loader2 className="w-10 h-10 text-amber-600 animate-spin mb-4" />
++            <p>Loading your orders...</p>
++          </div>
++        ) : error ? (
++          <div className={`p-8 rounded-2xl border text-center ${cardClass}`}>
++            <p className="text-red-500 font-medium mb-4">{error}</p>
++            <button
++              onClick={fetchOrders}
++              className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition"
++            >
++              Try Again
++            </button>
++          </div>
++        ) : orders.length === 0 ? (
++          <div className={`p-16 rounded-2xl border text-center ${cardClass}`}>
++            <Coffee className="w-12 h-12 mx-auto mb-4 opacity-40" />
++            <p className="text-lg font-medium mb-1">No orders yet</p>
++            <p className={darkMode ? "text-gray-400" : "text-gray-600"}>
++              Orders you place will show up here.
++            </p>
++            <Link
++              href="/buyer"
++              className="inline-block mt-4 px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition"
++            >
++              Browse Products
++            </Link>
++          </div>
++        ) : (
++          <div className={`rounded-2xl border shadow-lg overflow-hidden ${cardClass}`}>
++            <div className="overflow-x-auto">
++              <table className="min-w-full">
++                <thead>
++                  <tr className={darkMode ? "bg-gray-900/50" : "bg-amber-800 text-white"}>
++                    <th className="py-3 px-6 text-left font-semibold">Order #</th>
++                    <th className="py-3 px-6 text-left font-semibold">Product</th>
++                    <th className="py-3 px-6 text-left font-semibold">Farmer</th>
++                    <th className="py-3 px-6 text-left font-semibold">Qty</th>
++                    <th className="py-3 px-6 text-left font-semibold">Total</th>
++                    <th className="py-3 px-6 text-left font-semibold">Date</th>
++                    <th className="py-3 px-6 text-left font-semibold">Status</th>
++                  </tr>
++                </thead>
++                <tbody>
++                  {orders.map((order) => (
++                    <tr
++                      key={order.id}
++                      className={`border-b ${
++                        darkMode ? "border-gray-700 hover:bg-gray-800/50" : "border-gray-100 hover:bg-amber-50"
++                      } transition-colors`}
++                    >
++                      <td className="py-4 px-6 font-medium">{order.order_number}</td>
++                      <td className="py-4 px-6">
++                        <div className="font-medium">{order.products?.name || "Unknown product"}</div>
++                        {order.products?.grade && (
++                          <div className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
++                            Grade {order.products.grade}
++                          </div>
++                        )}
++                      </td>
++                      <td className="py-4 px-6">
++                        {order.products?.farmers?.users?.full_name ||
++                          order.products?.farmers?.farm_name ||
++                          "Unknown farmer"}
++                      </td>
++                      <td className="py-4 px-6">{order.quantity} kg</td>
++                      <td className="py-4 px-6 font-semibold">{formatCurrency(order.total_price)}</td>
++                      <td className="py-4 px-6">{formatDate(order.order_date)}</td>
++                      <td className="py-4 px-6">
++                        <span
++                          className={`px-3 py-1 rounded-full text-sm font-medium ${
++                            STATUS_STYLES[order.status] || "bg-gray-100 text-gray-700"
++                          }`}
++                        >
++                          {order.status}
++                        </span>
++                      </td>
++                    </tr>
++                  ))}
++                </tbody>
++              </table>
++            </div>
++            <div
++              className={`px-6 py-4 border-t text-sm flex justify-between ${
++                darkMode ? "border-gray-700 text-gray-400" : "border-gray-100 text-gray-600"
++              }`}
++            >
++              <span>Showing {orders.length} orders</span>
++            </div>
++          </div>
++        )}
++      </div>
++    </div>
++  );
++}
+diff --git a/src/app/farmer/orders/page.tsx b/src/app/farmer/orders/page.tsx
+index 1d5b831..9ea1d29 100644
+--- a/src/app/farmer/orders/page.tsx
++++ b/src/app/farmer/orders/page.tsx
+@@ -10,41 +10,76 @@ interface Order {
+   status: string;
+ }
+ 
++const STATUS_OPTIONS = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"];
++
+ export default function FarmerOrdersPage() {
+   const [orders, setOrders] = useState<Order[]>([]);
+   const [loading, setLoading] = useState(true);
+   const [error, setError] = useState<string>("");
++  const [updatingId, setUpdatingId] = useState<number | string | null>(null);
++  const [updateError, setUpdateError] = useState<string>("");
+ 
+-  useEffect(() => {
+-    async function loadOrders() {
+-      try {
+-        const res = await fetch("/api/farmer/orders");
+-        
+-        if (!res.ok) {
+-          throw new Error(`HTTP error! Status: ${res.status}`);
+-        }
+-        
+-        const data = await res.json();
+-
+-        // Handle different response formats
+-        if (data.orders && Array.isArray(data.orders)) {
+-          setOrders(data.orders);
+-        } else if (Array.isArray(data)) {
+-          setOrders(data);
+-        } else {
+-          throw new Error("Invalid data format received");
+-        }
+-      } catch (err: unknown) {
+-        const errorMessage = err instanceof Error ? err.message : "Failed to load orders";
+-        setError(errorMessage);
+-      } finally {
+-        setLoading(false);
++  async function loadOrders() {
++    try {
++      const res = await fetch("/api/farmer/orders");
++
++      if (!res.ok) {
++        throw new Error(`HTTP error! Status: ${res.status}`);
+       }
++
++      const data = await res.json();
++
++      // Handle different response formats
++      if (data.orders && Array.isArray(data.orders)) {
++        setOrders(data.orders);
++      } else if (Array.isArray(data)) {
++        setOrders(data);
++      } else {
++        throw new Error("Invalid data format received");
++      }
++    } catch (err: unknown) {
++      const errorMessage = err instanceof Error ? err.message : "Failed to load orders";
++      setError(errorMessage);
++    } finally {
++      setLoading(false);
+     }
++  }
+ 
++  useEffect(() => {
+     loadOrders();
+   }, []);
+ 
++  const handleStatusChange = async (orderId: number | string, newStatus: string) => {
++    const previousOrders = orders;
++    setUpdateError("");
++    setUpdatingId(orderId);
++
++    // Optimistic update
++    setOrders((prev) =>
++      prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o))
++    );
++
++    try {
++      const res = await fetch("/api/farmer/orders", {
++        method: "PUT",
++        headers: { "Content-Type": "application/json" },
++        body: JSON.stringify({ orderId, status: newStatus, deliveryStatus: newStatus }),
++      });
++
++      const data = await res.json();
++
++      if (!res.ok || !data.success) {
++        throw new Error(data.error || "Failed to update order status");
++      }
++    } catch (err: unknown) {
++      // Revert on failure
++      setOrders(previousOrders);
++      setUpdateError(err instanceof Error ? err.message : "Failed to update order status");
++    } finally {
++      setUpdatingId(null);
++    }
++  };
++
+   if (loading) {
+     return (
+       <div className="flex flex-col items-center justify-center min-h-[400px]">
+@@ -109,6 +144,12 @@ export default function FarmerOrdersPage() {
+         </div>
+       </div>
+ 
++      {updateError && (
++        <div className="mb-4 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
++          {updateError}
++        </div>
++      )}
++
+       {/* Order Summary Cards */}
+       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+         <div className="p-4 bg-white rounded-xl shadow border border-amber-100">
+@@ -167,9 +208,21 @@ export default function FarmerOrdersPage() {
+                       <span className="text-gray-500 ml-1">kg</span>
+                     </td>
+                     <td className="py-4 px-6">
+-                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusColor}`}>
+-                        {order.status}
+-                      </span>
++                      <select
++                        value={order.status}
++                        disabled={updatingId === order.id}
++                        onChange={(e) => handleStatusChange(order.id, e.target.value)}
++                        className={`px-3 py-1.5 rounded-full text-sm font-medium border-0 cursor-pointer disabled:opacity-50 disabled:cursor-wait ${statusColor}`}
++                      >
++                        {STATUS_OPTIONS.map((opt) => (
++                          <option key={opt} value={opt}>
++                            {opt.charAt(0).toUpperCase() + opt.slice(1)}
++                          </option>
++                        ))}
++                      </select>
++                      {updatingId === order.id && (
++                        <span className="ml-2 text-xs text-gray-400">Saving...</span>
++                      )}
+                     </td>
+                   </tr>
+                 );
+@@ -187,7 +240,7 @@ export default function FarmerOrdersPage() {
+                 Export
+               </button>
+               <button 
+-                onClick={() => window.location.reload()}
++                onClick={() => loadOrders()}
+                 className="text-amber-700 hover:text-amber-800 font-medium"
+               >
+                 Refresh

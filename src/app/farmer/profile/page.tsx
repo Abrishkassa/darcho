@@ -68,34 +68,7 @@ export default function FarmerProfilePage() {
 
   const router = useRouter();
 
-  // Get authentication headers
-  const getAuthHeaders = (): HeadersInit => {
-    const authHeader = localStorage.getItem("auth_header");
-    const sessionId = localStorage.getItem("session_id");
-    
-    const headers: HeadersInit = {
-      "Content-Type": "application/json",
-    };
-    
-    if (authHeader) {
-      headers["Authorization"] = authHeader;
-    } else if (sessionId) {
-      headers["Authorization"] = `Session ${sessionId}`;
-    }
-    
-    return headers;
-  };
-
-  // Check if user is authenticated
-  const checkAuth = (): boolean => {
-    const sessionId = localStorage.getItem("session_id");
-    const userRole = localStorage.getItem("user_role");
-    
-    if (!sessionId || userRole !== "farmer") {
-      return false;
-    }
-    return true;
-  };
+  const jsonHeaders: HeadersInit = { "Content-Type": "application/json" };
 
   // Load farmer profile
   const loadProfile = async () => {
@@ -103,16 +76,7 @@ export default function FarmerProfilePage() {
       setLoading(true);
       setError("");
       
-      // First check authentication
-      if (!checkAuth()) {
-        setError("You are not logged in. Please log in first.");
-        setLoading(false);
-        return;
-      }
-      
-      const res = await fetch("/api/farmer/profile", {
-        headers: getAuthHeaders(),
-      });
+      const res = await fetch("/api/farmer/profile");
       
       console.log("Profile response status:", res.status);
       
@@ -177,7 +141,7 @@ export default function FarmerProfilePage() {
     try {
       setLoadingProducts(true);
       const res = await fetch("/api/farmer/products", {
-        headers: getAuthHeaders(),
+        headers: jsonHeaders,
       });
       
       if (!res.ok) {
@@ -242,7 +206,7 @@ export default function FarmerProfilePage() {
     try {
       const res = await fetch("/api/farmer/profile", {
         method: "PUT",
-        headers: getAuthHeaders(),
+        headers: jsonHeaders,
         body: JSON.stringify(profile),
       });
 
@@ -276,22 +240,10 @@ export default function FarmerProfilePage() {
 
   const handleAddProduct = async () => {
     try {
-      // Get farmer ID from localStorage or profile
-      const farmerId = localStorage.getItem("farmer_id") || profile?.id;
-      
-      if (!farmerId) {
-        throw new Error("Farmer ID not found. Please login again.");
-      }
-      
-      const productData = {
-        ...newProduct,
-        farmerId: farmerId,
-      };
-      
       const res = await fetch("/api/farmer/products", {
         method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify(productData),
+        headers: jsonHeaders,
+        body: JSON.stringify(newProduct),
       });
 
       if (!res.ok) {
@@ -325,7 +277,7 @@ export default function FarmerProfilePage() {
     try {
       const res = await fetch(`/api/farmer/products?id=${editingProduct.id}`, {
         method: "PUT",
-        headers: getAuthHeaders(),
+        headers: jsonHeaders,
         body: JSON.stringify(editingProduct),
       });
 
@@ -349,7 +301,7 @@ export default function FarmerProfilePage() {
     try {
       const res = await fetch(`/api/farmer/products?id=${productId}`, {
         method: "DELETE",
-        headers: getAuthHeaders(),
+        headers: jsonHeaders,
       });
 
       if (!res.ok) {

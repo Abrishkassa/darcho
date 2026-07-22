@@ -1,0 +1,1234 @@
+diff --git a/src/app/api/farmer/orders/route.ts b/src/app/api/farmer/orders/route.ts
+index 3b5f758..7f65d5a 100644
+--- a/src/app/api/farmer/orders/route.ts
++++ b/src/app/api/farmer/orders/route.ts
+@@ -1,5 +1,5 @@
+ import { NextRequest, NextResponse } from 'next/server';
+-import prisma from '@/app/lib/prisma';
++import { supabase } from '@/app/lib/supabase';
+ import { verifyFarmerSession } from '@/app/lib/auth';
+ 
+ export const runtime = 'nodejs';
+@@ -7,69 +7,55 @@ export const runtime = 'nodejs';
+ // GET /api/farmer/orders - Get farmer's orders
+ export async function GET(request: NextRequest) {
+   try {
+-    // Verify session
+     const session = await verifyFarmerSession(request);
+-    
+-    if (!session.isValid || session.userRole !== 'farmer') {
++
++    if (!session.isValid || !session.farmerId) {
+       return NextResponse.json(
+-        { success: false, error: 'Unauthorized - Farmer access required' },
++        {
++          success: false,
++          error: session.error || 'Unauthorized - Farmer access required',
++          orders: [],
++          stats: { total_orders: 0, confirmed_orders: 0, total_quantity: 0 },
++        },
+         { status: 401 }
+       );
+     }
+-    
++
+     const farmerId = session.farmerId;
+-    
+-    // Get orders for this farmer
+-    const orders = await prisma.order.findMany({
+-      where: { farmerId },
+-      include: {
+-        product: {
+-          select: {
+-            name: true,
+-            grade: true,
+-            category: true,
+-          }
+-        },
+-        buyer: {
+-          include: {
+-            user: {
+-              select: {
+-                fullName: true,
+-                phone: true,
+-                email: true,
+-              }
+-            }
+-          }
+-        }
+-      },
+-      orderBy: { orderDate: 'desc' },
+-    });
+-    
+-    // Format orders for frontend
+-    const formattedOrders = orders.map(order => ({
++
++    const { data: orders, error } = await supabase
++      .from('orders')
++      .select(
++        `*,
++        products ( name, grade, category ),
++        buyers ( company_name, users ( full_name, phone, email ) )`
++      )
++      .eq('farmer_id', farmerId)
++      .neq('status', 'cart')
++      .order('order_date', { ascending: false });
++
++    if (error) throw error;
++
++    const formattedOrders = (orders || []).map((order: any) => ({
+       id: order.id,
+-      order_number: order.orderNumber,
+-      buyer: order.buyer.user.fullName || order.buyer.companyName || 'Unknown Buyer',
+-      product: order.product?.name || 'Unknown Product',
++      order_number: order.order_number,
++      buyer: order.buyers?.users?.full_name || order.buyers?.company_name || 'Unknown Buyer',
++      product: order.products?.name || 'Unknown Product',
+       quantity: order.quantity,
+-      total: order.totalPrice,
++      total: order.total_price,
+       status: order.status,
+-      delivery: order.deliveryStatus,
+-      date: order.orderDate.toISOString().split('T')[0],
+-      payment_status: order.paymentStatus,
++      delivery: order.delivery_status,
++      date: order.order_date ? new Date(order.order_date).toISOString().split('T')[0] : null,
++      payment_status: order.payment_status,
+       notes: order.notes,
+     }));
+-    
+-    // Calculate stats
+-    const totalOrders = orders.length;
+-    const totalQuantity = orders.reduce((sum, order) => sum + order.quantity, 0);
+-    const confirmedOrders = orders.filter(order => 
+-      order.status === 'confirmed' || 
+-      order.status === 'processing' || 
+-      order.status === 'shipped' || 
+-      order.status === 'delivered'
++
++    const totalOrders = formattedOrders.length;
++    const totalQuantity = formattedOrders.reduce((sum, o) => sum + (o.quantity || 0), 0);
++    const confirmedOrders = formattedOrders.filter((o) =>
++      ['confirmed', 'processing', 'shipped', 'delivered'].includes(o.status)
+     ).length;
+-    
++
+     return NextResponse.json({
+       success: true,
+       orders: formattedOrders,
+@@ -79,84 +65,66 @@ export async function GET(request: NextRequest) {
+         total_quantity: totalQuantity,
+       },
+     });
+-    
+   } catch (error: any) {
+     console.error('Error fetching farmer orders:', error);
+     return NextResponse.json(
+-      { 
+-        success: false, 
++      {
++        success: false,
+         error: error.message,
+         orders: [],
+-        stats: {
+-          total_orders: 0,
+-          confirmed_orders: 0,
+-          total_quantity: 0,
+-        }
++        stats: { total_orders: 0, confirmed_orders: 0, total_quantity: 0 },
+       },
+       { status: 500 }
+     );
+   }
+ }
+ 
+-// PUT /api/farmer/orders/:id/status - Update order status
++// PUT /api/farmer/orders - Update order status (order belongs to the logged-in farmer)
+ export async function PUT(request: NextRequest) {
+   try {
+     const session = await verifyFarmerSession(request);
+-    
+-    if (!session.isValid || session.userRole !== 'farmer') {
++
++    if (!session.isValid || !session.farmerId) {
+       return NextResponse.json(
+-        { success: false, error: 'Unauthorized' },
++        { success: false, error: session.error || 'Unauthorized' },
+         { status: 401 }
+       );
+     }
+-    
++
+     const { orderId, status, deliveryStatus } = await request.json();
+-    
++
+     if (!orderId || !status) {
+       return NextResponse.json(
+         { success: false, error: 'Order ID and status are required' },
+         { status: 400 }
+       );
+     }
+-    
+-    // Verify the order belongs to this farmer
+-    const order = await prisma.order.findFirst({
+-      where: {
+-        id: parseInt(orderId),
+-        farmerId: session.farmerId,
+-      },
+-    });
+-    
+-    if (!order) {
+-      return NextResponse.json(
+-        { success: false, error: 'Order not found or unauthorized' },
+-        { status: 404 }
+-      );
++
++    const updatePayload: Record<string, any> = {
++      status,
++      delivery_status: deliveryStatus || status,
++    };
++    if (status === 'confirmed') updatePayload.confirmed_date = new Date().toISOString();
++    if (status === 'shipped') updatePayload.shipped_date = new Date().toISOString();
++    if (status === 'delivered') updatePayload.delivered_date = new Date().toISOString();
++
++    const { data: updatedOrder, error } = await supabase
++      .from('orders')
++      .update(updatePayload)
++      .eq('id', orderId)
++      .eq('farmer_id', session.farmerId)
++      .select()
++      .single();
++
++    if (error) throw error;
++
++    if (!updatedOrder) {
++      return NextResponse.json({ success: false, error: 'Order not found or unauthorized' }, { status: 404 });
+     }
+-    
+-    // Update order
+-    const updatedOrder = await prisma.order.update({
+-      where: { id: parseInt(orderId) },
+-      data: {
+-        status,
+-        deliveryStatus: deliveryStatus || status,
+-        ...(status === 'confirmed' && { confirmedDate: new Date() }),
+-        ...(status === 'shipped' && { shippedDate: new Date() }),
+-        ...(status === 'delivered' && { deliveredDate: new Date() }),
+-      },
+-    });
+-    
+-    return NextResponse.json({
+-      success: true,
+-      message: 'Order updated successfully',
+-      order: updatedOrder,
+-    });
+-    
++
++    return NextResponse.json({ success: true, message: 'Order updated successfully', order: updatedOrder });
+   } catch (error: any) {
+     console.error('Error updating order:', error);
+-    return NextResponse.json(
+-      { success: false, error: error.message },
+-      { status: 500 }
+-    );
++    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+   }
+-}
+\ No newline at end of file
++}
+diff --git a/src/app/api/farmer/products/route.ts b/src/app/api/farmer/products/route.ts
+index 22de38b..ce8692b 100644
+--- a/src/app/api/farmer/products/route.ts
++++ b/src/app/api/farmer/products/route.ts
+@@ -1,179 +1,251 @@
+ import { NextRequest, NextResponse } from 'next/server';
+-import prisma from '@/app/lib/prisma';
++import { supabase } from '@/app/lib/supabase';
++import { verifyFarmerSession } from '@/app/lib/auth';
+ 
+ export const runtime = 'nodejs';
+ 
++// GET /api/farmer/products - Get all products for the logged-in farmer
+ export async function GET(request: NextRequest) {
+   try {
+-    console.log('📡 Fetching farmer products...');
+-    
+-    // Get farmer ID from query params or use first farmer
+-    const searchParams = request.nextUrl.searchParams;
+-    const farmerId = searchParams.get('farmerId');
+-    
+-    let farmer;
+-    
+-    if (farmerId) {
+-      farmer = await prisma.farmer.findUnique({
+-        where: { id: parseInt(farmerId) },
+-        include: { 
+-          products: {
+-            orderBy: { createdAt: 'desc' }
+-          } 
+-        },
+-      });
+-    } else {
+-      // Get first farmer for testing
+-      farmer = await prisma.farmer.findFirst({
+-        include: { 
+-          products: {
+-            orderBy: { createdAt: 'desc' }
+-          } 
+-        },
+-      });
+-    }
+-    
+-    if (!farmer) {
++    const session = await verifyFarmerSession(request);
++
++    if (!session.isValid || !session.farmerId) {
+       return NextResponse.json(
+-        { 
+-          success: false, 
+-          error: 'No farmer found',
++        {
++          success: false,
++          error: session.error || 'Unauthorized - Farmer access required',
+           products: [],
+-          stats: {
+-            total_quantity: 0,
+-            product_count: 0,
+-            farmer_id: null,
+-            total_value: 0,
+-          }
++          stats: { total_quantity: 0, product_count: 0, farmer_id: null, total_value: 0 },
+         },
+-        { status: 200 }
++        { status: 401 }
+       );
+     }
+-    
+-    // Format products to match frontend expectations
+-    const formattedProducts = farmer.products.map(product => ({
++
++    const farmerId = session.farmerId;
++
++    const { data: products, error } = await supabase
++      .from('products')
++      .select('*')
++      .eq('farmer_id', farmerId)
++      .order('created_at', { ascending: false });
++
++    if (error) throw error;
++
++    const formattedProducts = (products || []).map((product) => ({
+       id: product.id,
+       name: product.name,
+       quantity: product.quantity,
+-      price: product.pricePerUnit, // Convert pricePerUnit → price
++      price: product.price_per_unit,
+       category: product.category,
+       description: product.description,
+-      image_url: product.imageUrls[0] || null, // Convert imageUrls[0] → image_url
+-      created_at: product.createdAt.toISOString(),
+-      updated_at: product.updatedAt.toISOString(),
+-      // Additional fields your frontend might use
++      image_url: product.image_urls?.[0] || null,
++      created_at: product.created_at,
++      updated_at: product.updated_at,
+       grade: product.grade,
+-      origin: product.originRegion,
++      origin: product.origin_region,
+       altitude: product.altitude,
+       unit: product.unit,
+       status: product.status,
+       certifications: product.certifications,
+-      harvest_date: product.harvestDate?.toISOString(),
+-      processing_method: product.processingMethod,
++      harvest_date: product.harvest_date,
++      processing_method: product.processing_method,
+     }));
+-    
+-    // Calculate stats
+-    const totalQuantity = formattedProducts.reduce((sum, product) => sum + product.quantity, 0);
+-    const totalValue = formattedProducts.reduce(
+-      (sum, product) => sum + (product.quantity * product.price), 
+-      0
+-    );
+-    
++
++    const totalQuantity = formattedProducts.reduce((sum, p) => sum + (p.quantity || 0), 0);
++    const totalValue = formattedProducts.reduce((sum, p) => sum + (p.quantity || 0) * (p.price || 0), 0);
++
+     return NextResponse.json({
+       success: true,
+       products: formattedProducts,
+       stats: {
+         total_quantity: totalQuantity,
+         product_count: formattedProducts.length,
+-        farmer_id: farmer.id,
++        farmer_id: farmerId,
+         total_value: totalValue,
+       },
+     });
+-    
+   } catch (error: any) {
+     console.error('❌ Error fetching farmer products:', error);
+-    
+-    return NextResponse.json({
+-      success: false,
+-      error: process.env.NODE_ENV === 'development' ? error.message : 'Failed to fetch products',
+-      products: [],
+-      stats: {
+-        total_quantity: 0,
+-        product_count: 0,
+-        farmer_id: null,
+-        total_value: 0,
++    return NextResponse.json(
++      {
++        success: false,
++        error: process.env.NODE_ENV === 'development' ? error.message : 'Failed to fetch products',
++        products: [],
++        stats: { total_quantity: 0, product_count: 0, farmer_id: null, total_value: 0 },
+       },
+-    }, { status: 500 });
++      { status: 500 }
++    );
+   }
+ }
+ 
+-// POST endpoint for adding products
++// POST /api/farmer/products - Add a new product
+ export async function POST(request: NextRequest) {
+   try {
++    const session = await verifyFarmerSession(request);
++
++    if (!session.isValid || !session.farmerId) {
++      return NextResponse.json(
++        { success: false, error: session.error || 'Unauthorized - Farmer access required' },
++        { status: 401 }
++      );
++    }
++
+     const body = await request.json();
+-    
+-    // Validation
+-    const requiredFields = ['farmerId', 'name', 'category', 'quantity', 'price'];
+-    const missingFields = requiredFields.filter(field => !body[field]);
+-    
++
++    const requiredFields = ['name', 'category', 'quantity', 'price'];
++    const missingFields = requiredFields.filter((field) => !body[field]);
++
+     if (missingFields.length > 0) {
+       return NextResponse.json(
+-        { 
+-          success: false, 
+-          error: `Missing required fields: ${missingFields.join(', ')}` 
+-        },
++        { success: false, error: `Missing required fields: ${missingFields.join(', ')}` },
+         { status: 400 }
+       );
+     }
+-    
+-    // Create product
+-    const product = await prisma.product.create({
+-      data: {
+-        farmerId: parseInt(body.farmerId),
++
++    const { data: product, error } = await supabase
++      .from('products')
++      .insert({
++        farmer_id: session.farmerId,
+         name: body.name,
+         grade: body.grade || 'A',
+         category: body.category,
+         quantity: parseFloat(body.quantity),
+         unit: body.unit || 'kg',
+-        pricePerUnit: parseFloat(body.price),
++        price_per_unit: parseFloat(body.price),
+         description: body.description,
+-        originRegion: body.origin || body.originRegion || 'Ethiopia',
++        origin_region: body.origin || body.originRegion || 'Ethiopia',
+         altitude: body.altitude,
+-        harvestDate: body.harvest_date ? new Date(body.harvest_date) : null,
+-        processingMethod: body.processing_method,
++        harvest_date: body.harvest_date || null,
++        processing_method: body.processing_method,
+         certifications: body.certifications || [],
+-        moistureContent: body.moisture_content ? parseFloat(body.moisture_content) : null,
+-        beanSize: body.bean_size,
+-        cuppingScore: body.cupping_score ? parseFloat(body.cupping_score) : null,
+-        imageUrls: body.image_url ? [body.image_url] : [],
++        moisture_content: body.moisture_content ? parseFloat(body.moisture_content) : null,
++        bean_size: body.bean_size,
++        cupping_score: body.cupping_score ? parseFloat(body.cupping_score) : null,
++        image_urls: body.image_url ? [body.image_url] : [],
+         status: body.status || 'available',
+-      },
+-    });
+-    
+-    // Format response to match frontend
++      })
++      .select()
++      .single();
++
++    if (error) throw error;
++
+     const formattedProduct = {
+       id: product.id,
+       name: product.name,
+       quantity: product.quantity,
+-      price: product.pricePerUnit,
++      price: product.price_per_unit,
+       category: product.category,
+       description: product.description,
+-      image_url: product.imageUrls[0] || null,
+-      created_at: product.createdAt.toISOString(),
+-      updated_at: product.updatedAt.toISOString(),
++      image_url: product.image_urls?.[0] || null,
++      created_at: product.created_at,
++      updated_at: product.updated_at,
+     };
+-    
+-    return NextResponse.json({
+-      success: true,
+-      message: 'Product created successfully',
+-      product: formattedProduct,
+-    }, { status: 201 });
+-    
+-  } catch (error: any) {
+-    console.error('Error creating product:', error);
++
+     return NextResponse.json(
+-      { success: false, error: error.message },
+-      { status: 500 }
++      { success: true, message: 'Product created successfully', product: formattedProduct },
++      { status: 201 }
+     );
++  } catch (error: any) {
++    console.error('Error creating product:', error);
++    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+   }
+-}
+\ No newline at end of file
++}
++
++// PUT /api/farmer/products?id=X - Update an existing product (must belong to the logged-in farmer)
++export async function PUT(request: NextRequest) {
++  try {
++    const session = await verifyFarmerSession(request);
++
++    if (!session.isValid || !session.farmerId) {
++      return NextResponse.json(
++        { success: false, error: session.error || 'Unauthorized - Farmer access required' },
++        { status: 401 }
++      );
++    }
++
++    const { searchParams } = new URL(request.url);
++    const id = searchParams.get('id');
++
++    if (!id) {
++      return NextResponse.json({ success: false, error: 'Product id is required' }, { status: 400 });
++    }
++
++    const body = await request.json();
++
++    const updatePayload: Record<string, any> = {};
++    if (body.name !== undefined) updatePayload.name = body.name;
++    if (body.category !== undefined) updatePayload.category = body.category;
++    if (body.price !== undefined) updatePayload.price_per_unit = parseFloat(body.price);
++    if (body.quantity !== undefined) updatePayload.quantity = parseFloat(body.quantity);
++    if (body.unit !== undefined) updatePayload.unit = body.unit;
++    if (body.description !== undefined) updatePayload.description = body.description;
++    if (body.status !== undefined) updatePayload.status = body.status;
++    if (body.grade !== undefined) updatePayload.grade = body.grade;
++    if (body.origin !== undefined) updatePayload.origin_region = body.origin;
++
++    const { data: product, error } = await supabase
++      .from('products')
++      .update(updatePayload)
++      .eq('id', id)
++      .eq('farmer_id', session.farmerId)
++      .select()
++      .single();
++
++    if (error) throw error;
++
++    if (!product) {
++      return NextResponse.json({ success: false, error: 'Product not found or unauthorized' }, { status: 404 });
++    }
++
++    const formattedProduct = {
++      id: product.id,
++      name: product.name,
++      quantity: product.quantity,
++      price: product.price_per_unit,
++      category: product.category,
++      description: product.description,
++      image_url: product.image_urls?.[0] || null,
++      created_at: product.created_at,
++      updated_at: product.updated_at,
++    };
++
++    return NextResponse.json({ success: true, message: 'Product updated successfully', product: formattedProduct });
++  } catch (error: any) {
++    console.error('Error updating product:', error);
++    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
++  }
++}
++
++// DELETE /api/farmer/products?id=X - Delete a product (must belong to the logged-in farmer)
++export async function DELETE(request: NextRequest) {
++  try {
++    const session = await verifyFarmerSession(request);
++
++    if (!session.isValid || !session.farmerId) {
++      return NextResponse.json(
++        { success: false, error: session.error || 'Unauthorized - Farmer access required' },
++        { status: 401 }
++      );
++    }
++
++    const { searchParams } = new URL(request.url);
++    const id = searchParams.get('id');
++
++    if (!id) {
++      return NextResponse.json({ success: false, error: 'Product id is required' }, { status: 400 });
++    }
++
++    const { error } = await supabase
++      .from('products')
++      .delete()
++      .eq('id', id)
++      .eq('farmer_id', session.farmerId);
++
++    if (error) throw error;
++
++    return NextResponse.json({ success: true, message: 'Product deleted successfully' });
++  } catch (error: any) {
++    console.error('Error deleting product:', error);
++    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
++  }
++}
+diff --git a/src/app/api/farmer/profile/route.ts b/src/app/api/farmer/profile/route.ts
+index b31a7c4..ee329ca 100644
+--- a/src/app/api/farmer/profile/route.ts
++++ b/src/app/api/farmer/profile/route.ts
+@@ -1,5 +1,5 @@
+ import { NextRequest, NextResponse } from 'next/server';
+-import prisma from '@/app/lib/prisma';
++import { supabase } from '@/app/lib/supabase';
+ import { verifyFarmerSession } from '@/app/lib/auth';
+ 
+ export const runtime = 'nodejs';
+@@ -8,114 +8,90 @@ export const runtime = 'nodejs';
+ export async function GET(request: NextRequest) {
+   try {
+     const session = await verifyFarmerSession(request);
+-    
+-    if (!session.isValid || session.userRole !== 'farmer') {
++
++    if (!session.isValid || !session.farmerId) {
+       return NextResponse.json(
+-        { success: false, error: 'Unauthorized - Farmer access required' },
++        { success: false, error: session.error || 'Unauthorized - Farmer access required', profile: null, recent_products: [] },
+         { status: 401 }
+       );
+     }
+-    
++
+     const farmerId = session.farmerId;
+-    
+-    // Get farmer profile with user data
+-    const farmer = await prisma.farmer.findUnique({
+-      where: { id: farmerId },
+-      include: {
+-        user: {
+-          select: {
+-            email: true,
+-            phone: true,
+-            fullName: true,
+-            isVerified: true,
+-            createdAt: true,
+-          }
+-        },
+-        products: {
+-          select: {
+-            id: true,
+-            name: true,
+-            category: true,
+-            pricePerUnit: true,
+-            quantity: true,
+-            unit: true,
+-            description: true,
+-            imageUrls: true,
+-            createdAt: true,
+-          },
+-          orderBy: { createdAt: 'desc' },
+-          take: 5, // Get recent products
+-        },
+-        _count: {
+-          select: {
+-            products: true,
+-            orders: true,
+-          }
+-        }
+-      }
+-    });
+-    
+-    if (!farmer) {
+-      return NextResponse.json(
+-        { success: false, error: 'Farmer not found' },
+-        { status: 404 }
+-      );
++
++    const { data: farmer, error: farmerError } = await supabase
++      .from('farmers')
++      .select('*, users ( email, phone, full_name, is_verified, created_at )')
++      .eq('id', farmerId)
++      .single();
++
++    if (farmerError || !farmer) {
++      return NextResponse.json({ success: false, error: 'Farmer not found' }, { status: 404 });
+     }
+-    
+-    // Format response
++
++    const { data: recentProducts } = await supabase
++      .from('products')
++      .select('id, name, category, price_per_unit, quantity, unit, description, image_urls, created_at')
++      .eq('farmer_id', farmerId)
++      .order('created_at', { ascending: false })
++      .limit(5);
++
++    const { count: totalProducts } = await supabase
++      .from('products')
++      .select('*', { count: 'exact', head: true })
++      .eq('farmer_id', farmerId);
++
++    const { count: totalOrders } = await supabase
++      .from('orders')
++      .select('*', { count: 'exact', head: true })
++      .eq('farmer_id', farmerId)
++      .neq('status', 'cart');
++
+     const profile = {
+       id: farmer.id,
+-      fullname: farmer.user.fullName,
+-      phone: farmer.user.phone,
+-      email: farmer.user.email,
++      fullname: farmer.users?.full_name,
++      phone: farmer.users?.phone,
++      email: farmer.users?.email,
+       region: farmer.region,
+       residence: farmer.residence,
+-      farm_size: farmer.farmSize,
+-      years_farming: farmer.yearsFarming,
+-      farm_name: farmer.farmName,
+-      certifications: farmer.certifications,
+-      join_date: farmer.joinDate.toISOString(),
+-      experience: farmer.yearsFarming ? `${farmer.yearsFarming} years` : 'Not specified',
+-      total_products: farmer._count.products,
+-      total_orders: farmer._count.orders,
+-      avg_rating: farmer.avgRating,
+-      response_time_hours: farmer.responseTimeHours,
+-      profile_image_url: farmer.profileImageUrl,
++      farm_size: farmer.farm_size,
++      years_farming: farmer.years_farming,
++      farm_name: farmer.farm_name,
++      certifications: farmer.certifications || [],
++      join_date: farmer.join_date,
++      experience: farmer.years_farming ? `${farmer.years_farming} years` : 'Not specified',
++      total_products: totalProducts || 0,
++      total_orders: totalOrders || 0,
++      avg_rating: farmer.avg_rating,
++      response_time_hours: farmer.response_time_hours,
++      profile_image_url: farmer.profile_image_url,
+     };
+-    
+-    // Format recent products
+-    const recentProducts = farmer.products.map(product => ({
++
++    const formattedRecentProducts = (recentProducts || []).map((product) => ({
+       id: product.id,
+       name: product.name,
+       category: product.category,
+-      price: product.pricePerUnit,
++      price: product.price_per_unit,
+       quantity: product.quantity,
+       unit: product.unit,
+       description: product.description,
+-      image_url: product.imageUrls[0] || null,
+-      created_at: product.createdAt.toISOString(),
++      image_url: product.image_urls?.[0] || null,
++      created_at: product.created_at,
+     }));
+-    
++
+     return NextResponse.json({
+       success: true,
+       profile,
+-      recent_products: recentProducts,
++      recent_products: formattedRecentProducts,
+       stats: {
+-        total_products: farmer._count.products,
+-        total_orders: farmer._count.orders,
+-        avg_rating: farmer.avgRating,
+-      }
++        total_products: totalProducts || 0,
++        total_orders: totalOrders || 0,
++        avg_rating: farmer.avg_rating,
++      },
+     });
+-    
+   } catch (error: any) {
+     console.error('Error fetching farmer profile:', error);
+     return NextResponse.json(
+-      { 
+-        success: false, 
+-        error: error.message,
+-        profile: null,
+-        recent_products: []
+-      },
++      { success: false, error: error.message, profile: null, recent_products: [] },
+       { status: 500 }
+     );
+   }
+@@ -125,82 +101,70 @@ export async function GET(request: NextRequest) {
+ export async function PUT(request: NextRequest) {
+   try {
+     const session = await verifyFarmerSession(request);
+-    
+-    if (!session.isValid || session.userRole !== 'farmer') {
+-      return NextResponse.json(
+-        { success: false, error: 'Unauthorized' },
+-        { status: 401 }
+-      );
++
++    if (!session.isValid || !session.farmerId) {
++      return NextResponse.json({ success: false, error: session.error || 'Unauthorized' }, { status: 401 });
+     }
+-    
+-    const farmerId = session.farmerId;
++
+     const updateData = await request.json();
+-    
+-    // Update farmer profile
+-    const updatedFarmer = await prisma.farmer.update({
+-      where: { id: farmerId },
+-      data: {
+-        farmName: updateData.farm_name,
+-        region: updateData.region,
+-        residence: updateData.residence,
+-        farmSize: updateData.farm_size,
+-        yearsFarming: updateData.years_farming ? parseInt(updateData.years_farming) : undefined,
+-        certifications: updateData.certifications || [],
+-        profileImageUrl: updateData.profile_image_url,
+-      }
+-    });
+-    
+-    // Update user data if provided
++
++    const farmerUpdatePayload: Record<string, any> = {};
++    if (updateData.farm_name !== undefined) farmerUpdatePayload.farm_name = updateData.farm_name;
++    if (updateData.region !== undefined) farmerUpdatePayload.region = updateData.region;
++    if (updateData.residence !== undefined) farmerUpdatePayload.residence = updateData.residence;
++    if (updateData.farm_size !== undefined) farmerUpdatePayload.farm_size = updateData.farm_size;
++    if (updateData.years_farming !== undefined)
++      farmerUpdatePayload.years_farming = updateData.years_farming ? parseInt(updateData.years_farming) : null;
++    if (updateData.certifications !== undefined) farmerUpdatePayload.certifications = updateData.certifications;
++    if (updateData.profile_image_url !== undefined)
++      farmerUpdatePayload.profile_image_url = updateData.profile_image_url;
++
++    if (Object.keys(farmerUpdatePayload).length > 0) {
++      const { error: farmerUpdateError } = await supabase
++        .from('farmers')
++        .update(farmerUpdatePayload)
++        .eq('id', session.farmerId);
++      if (farmerUpdateError) throw farmerUpdateError;
++    }
++
+     if (updateData.fullname || updateData.email || updateData.phone) {
+-      await prisma.user.update({
+-        where: { id: session.userId },
+-        data: {
+-          fullName: updateData.fullname,
+-          email: updateData.email,
+-          phone: updateData.phone,
+-        }
+-      });
++      const userUpdatePayload: Record<string, any> = {};
++      if (updateData.fullname !== undefined) userUpdatePayload.full_name = updateData.fullname;
++      if (updateData.email !== undefined) userUpdatePayload.email = updateData.email;
++      if (updateData.phone !== undefined) userUpdatePayload.phone = updateData.phone;
++
++      const { error: userUpdateError } = await supabase
++        .from('users')
++        .update(userUpdatePayload)
++        .eq('id', session.userId);
++      if (userUpdateError) throw userUpdateError;
+     }
+-    
+-    // Get updated profile
+-    const farmer = await prisma.farmer.findUnique({
+-      where: { id: farmerId },
+-      include: {
+-        user: {
+-          select: {
+-            email: true,
+-            phone: true,
+-            fullName: true,
+-          }
+-        }
+-      }
+-    });
+-    
++
++    const { data: farmer, error: farmerFetchError } = await supabase
++      .from('farmers')
++      .select('*, users ( email, phone, full_name )')
++      .eq('id', session.farmerId)
++      .single();
++
++    if (farmerFetchError || !farmer) throw farmerFetchError || new Error('Farmer not found after update');
++
+     const responseProfile = {
+-      id: farmer!.id,
+-      fullname: farmer!.user.fullName,
+-      phone: farmer!.user.phone,
+-      email: farmer!.user.email,
+-      region: farmer!.region,
+-      residence: farmer!.residence,
+-      farm_size: farmer!.farmSize,
+-      years_farming: farmer!.yearsFarming,
+-      farm_name: farmer!.farmName,
+-      certifications: farmer!.certifications,
+-      join_date: farmer!.joinDate.toISOString(),
++      id: farmer.id,
++      fullname: farmer.users?.full_name,
++      phone: farmer.users?.phone,
++      email: farmer.users?.email,
++      region: farmer.region,
++      residence: farmer.residence,
++      farm_size: farmer.farm_size,
++      years_farming: farmer.years_farming,
++      farm_name: farmer.farm_name,
++      certifications: farmer.certifications || [],
++      join_date: farmer.join_date,
+     };
+-    
+-    return NextResponse.json({
+-      success: true,
+-      message: 'Profile updated successfully',
+-      profile: responseProfile,
+-    });
+-    
++
++    return NextResponse.json({ success: true, message: 'Profile updated successfully', profile: responseProfile });
+   } catch (error: any) {
+     console.error('Error updating farmer profile:', error);
+-    return NextResponse.json(
+-      { success: false, error: error.message },
+-      { status: 500 }
+-    );
++    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+   }
+-}
+\ No newline at end of file
++}
+diff --git a/src/app/farmer/products/page.tsx b/src/app/farmer/products/page.tsx
+index 8afecb6..3d37a70 100644
+--- a/src/app/farmer/products/page.tsx
++++ b/src/app/farmer/products/page.tsx
+@@ -45,23 +45,6 @@ export default function ProductsPage() {
+   const [apiResponse, setApiResponse] = useState<ApiResponse | null>(null);
+   const [farmerId, setFarmerId] = useState<string | null>(null);
+ 
+-  const getAuthHeader = () => {
+-    // Get session ID from localStorage
+-    const sessionId = localStorage.getItem("session_id");
+-    const authHeader = localStorage.getItem("auth_header");
+-    
+-    console.log("Auth debug:", { sessionId, authHeader });
+-    
+-    // Use either the session_id to create header or use stored auth_header
+-    if (authHeader) {
+-      return authHeader;
+-    } else if (sessionId) {
+-      return `Session ${sessionId}`;
+-    }
+-    
+-    return null;
+-  };
+-
+   const fetchProducts = async (): Promise<void> => {
+     try {
+       setLoading(true);
+@@ -69,23 +52,7 @@ export default function ProductsPage() {
+       
+       console.log('🔄 Fetching products from API...');
+       
+-      // Get authentication header
+-      const authHeader = getAuthHeader();
+-      
+-      if (!authHeader) {
+-        throw new Error("Not authenticated. Please log in again.");
+-      }
+-      
+-      console.log('Using auth header:', authHeader.substring(0, 30) + '...');
+-      
+-      const headers = {
+-        "Authorization": authHeader,
+-        "Content-Type": "application/json"
+-      };
+-      
+-      const response = await fetch("/api/farmer/products", {
+-        headers: headers
+-      });
++      const response = await fetch("/api/farmer/products");
+       
+       console.log('📡 Response status:', response.status, response.statusText);
+       
+@@ -126,45 +93,13 @@ export default function ProductsPage() {
+       const errorMessage = err instanceof Error ? err.message : "Failed to fetch products";
+       setError(errorMessage);
+       console.error('❌ Fetch error:', err);
+-      
+-      // Try to get farmer ID from localStorage as fallback
+-      const storedFarmerId = localStorage.getItem("farmer_id");
+-      if (storedFarmerId) {
+-        setFarmerId(storedFarmerId);
+-      }
+     } finally {
+       setLoading(false);
+     }
+   };
+ 
+   useEffect(() => {
+-    // Check if user is authenticated before fetching
+-    const checkAuth = () => {
+-      const sessionId = localStorage.getItem("session_id");
+-      const userRole = localStorage.getItem("user_role");
+-      
+-      if (!sessionId) {
+-        setError("You are not logged in. Please log in first.");
+-        setLoading(false);
+-        return;
+-      }
+-      
+-      if (userRole !== "farmer") {
+-        setError("Access denied. This page is for farmers only.");
+-        setLoading(false);
+-        return;
+-      }
+-      
+-      // Get farmer ID from localStorage
+-      const storedFarmerId = localStorage.getItem("farmer_id");
+-      if (storedFarmerId) {
+-        setFarmerId(storedFarmerId);
+-      }
+-      
+-      fetchProducts();
+-    };
+-    
+-    checkAuth();
++    fetchProducts();
+   }, []);
+ 
+   // Calculate totals
+diff --git a/src/app/farmer/profile/page.tsx b/src/app/farmer/profile/page.tsx
+index 97c2b70..58b081a 100644
+--- a/src/app/farmer/profile/page.tsx
++++ b/src/app/farmer/profile/page.tsx
+@@ -68,34 +68,7 @@ export default function FarmerProfilePage() {
+ 
+   const router = useRouter();
+ 
+-  // Get authentication headers
+-  const getAuthHeaders = (): HeadersInit => {
+-    const authHeader = localStorage.getItem("auth_header");
+-    const sessionId = localStorage.getItem("session_id");
+-    
+-    const headers: HeadersInit = {
+-      "Content-Type": "application/json",
+-    };
+-    
+-    if (authHeader) {
+-      headers["Authorization"] = authHeader;
+-    } else if (sessionId) {
+-      headers["Authorization"] = `Session ${sessionId}`;
+-    }
+-    
+-    return headers;
+-  };
+-
+-  // Check if user is authenticated
+-  const checkAuth = (): boolean => {
+-    const sessionId = localStorage.getItem("session_id");
+-    const userRole = localStorage.getItem("user_role");
+-    
+-    if (!sessionId || userRole !== "farmer") {
+-      return false;
+-    }
+-    return true;
+-  };
++  const jsonHeaders: HeadersInit = { "Content-Type": "application/json" };
+ 
+   // Load farmer profile
+   const loadProfile = async () => {
+@@ -103,16 +76,7 @@ export default function FarmerProfilePage() {
+       setLoading(true);
+       setError("");
+       
+-      // First check authentication
+-      if (!checkAuth()) {
+-        setError("You are not logged in. Please log in first.");
+-        setLoading(false);
+-        return;
+-      }
+-      
+-      const res = await fetch("/api/farmer/profile", {
+-        headers: getAuthHeaders(),
+-      });
++      const res = await fetch("/api/farmer/profile");
+       
+       console.log("Profile response status:", res.status);
+       
+@@ -177,7 +141,7 @@ export default function FarmerProfilePage() {
+     try {
+       setLoadingProducts(true);
+       const res = await fetch("/api/farmer/products", {
+-        headers: getAuthHeaders(),
++        headers: jsonHeaders,
+       });
+       
+       if (!res.ok) {
+@@ -242,7 +206,7 @@ export default function FarmerProfilePage() {
+     try {
+       const res = await fetch("/api/farmer/profile", {
+         method: "PUT",
+-        headers: getAuthHeaders(),
++        headers: jsonHeaders,
+         body: JSON.stringify(profile),
+       });
+ 
+@@ -276,22 +240,10 @@ export default function FarmerProfilePage() {
+ 
+   const handleAddProduct = async () => {
+     try {
+-      // Get farmer ID from localStorage or profile
+-      const farmerId = localStorage.getItem("farmer_id") || profile?.id;
+-      
+-      if (!farmerId) {
+-        throw new Error("Farmer ID not found. Please login again.");
+-      }
+-      
+-      const productData = {
+-        ...newProduct,
+-        farmerId: farmerId,
+-      };
+-      
+       const res = await fetch("/api/farmer/products", {
+         method: "POST",
+-        headers: getAuthHeaders(),
+-        body: JSON.stringify(productData),
++        headers: jsonHeaders,
++        body: JSON.stringify(newProduct),
+       });
+ 
+       if (!res.ok) {
+@@ -325,7 +277,7 @@ export default function FarmerProfilePage() {
+     try {
+       const res = await fetch(`/api/farmer/products?id=${editingProduct.id}`, {
+         method: "PUT",
+-        headers: getAuthHeaders(),
++        headers: jsonHeaders,
+         body: JSON.stringify(editingProduct),
+       });
+ 
+@@ -349,7 +301,7 @@ export default function FarmerProfilePage() {
+     try {
+       const res = await fetch(`/api/farmer/products?id=${productId}`, {
+         method: "DELETE",
+-        headers: getAuthHeaders(),
++        headers: jsonHeaders,
+       });
+ 
+       if (!res.ok) {
+diff --git a/src/app/lib/auth.ts b/src/app/lib/auth.ts
+index c5468fa..c5ef543 100644
+--- a/src/app/lib/auth.ts
++++ b/src/app/lib/auth.ts
+@@ -1,54 +1,33 @@
+ import { NextRequest } from 'next/server';
+-import prisma from './prisma';
++import { getServerSession } from 'next-auth';
++import { supabase } from './supabase';
+ 
+ export async function verifyFarmerSession(request: NextRequest) {
+   try {
+-    // Get session from Authorization header
+-    const authHeader = request.headers.get('authorization');
+-    const sessionId = request.cookies.get('session_id')?.value;
+-    
+-    let token: string | null = null;
+-    
+-    if (authHeader?.startsWith('Session ')) {
+-      token = authHeader.substring(8);
+-    } else if (sessionId) {
+-      token = sessionId;
+-    }
+-    
+-    if (!token) {
++    const session = await getServerSession();
++
++    if (!session?.user?.email) {
+       return { isValid: false, error: 'No session found', farmerId: null };
+     }
+-    
+-    // In a real app, you'd validate the session in a sessions table
+-    // For now, we'll just check if there's a farmer with matching data
+-    
+-    // Get user from token (simplified - in production use JWT or session DB)
+-    // This is a simplified version - you should implement proper session validation
+-    
+-    // For now, we'll accept any valid session and get farmer from user
+-    const user = await prisma.user.findFirst({
+-      where: {
+-        OR: [
+-          // In a real app, you'd have a sessions table
+-          { phone: { contains: 'farmer' } } // Simplified check
+-        ]
+-      },
+-      include: { farmer: true }
+-    });
+-    
+-    if (!user || !user.farmer) {
++
++    const { data: user, error } = await supabase
++      .from('users')
++      .select('*, farmers(*)')
++      .eq('email', session.user.email)
++      .single();
++
++    if (error || !user || !user.farmers) {
+       return { isValid: false, error: 'Invalid session', farmerId: null };
+     }
+-    
+-    return { 
+-      isValid: true, 
+-      farmerId: user.farmer.id,
++
++    return {
++      isValid: true,
++      farmerId: user.farmers.id,
+       userId: user.id,
+-      userRole: user.role
++      userRole: user.role,
+     };
+-    
+   } catch (error) {
+     console.error('Session verification error:', error);
+     return { isValid: false, error: 'Session verification failed', farmerId: null };
+   }
+-}
+\ No newline at end of file
++}

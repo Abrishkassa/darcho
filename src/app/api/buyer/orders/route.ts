@@ -17,18 +17,28 @@ export async function GET(request: NextRequest) {
 
     const { data: user } = await supabase
       .from('users')
-      .select('*, buyers(*)')
+      .select('*')
       .eq('email', session.user.email)
       .single();
 
-    if (!user?.buyers) {
+    if (!user) {
+      return NextResponse.json({ error: 'Buyer not found' }, { status: 404 });
+    }
+
+    const { data: buyer } = await supabase
+      .from('buyers')
+      .select('*')
+      .eq('user_id', user.id)
+      .single();
+
+    if (!buyer) {
       return NextResponse.json({ error: 'Buyer not found' }, { status: 404 });
     }
 
     let query = supabase
       .from('orders')
       .select(`*, products(name, grade, farmers(farm_name, users(full_name, phone)))`, { count: 'exact' })
-      .eq('buyer_id', user.buyers.id)
+      .eq('buyer_id', buyer.id)
       .neq('status', 'cart')
       .order('order_date', { ascending: false })
       .range(skip, skip + limit - 1);
@@ -43,7 +53,7 @@ export async function GET(request: NextRequest) {
     const { data: spentData } = await supabase
       .from('orders')
       .select('total_price')
-      .eq('buyer_id', user.buyers.id)
+      .eq('buyer_id', buyer.id)
       .neq('status', 'cart');
 
     const totalSpent = spentData?.reduce((sum, o) => sum + (o.total_price || 0), 0) || 0;
@@ -78,11 +88,21 @@ export async function POST(request: NextRequest) {
 
     const { data: user } = await supabase
       .from('users')
-      .select('*, buyers(*)')
+      .select('*')
       .eq('email', session.user.email)
       .single();
 
-    if (!user?.buyers) {
+    if (!user) {
+      return NextResponse.json({ error: 'Buyer not found' }, { status: 404 });
+    }
+
+    const { data: buyer } = await supabase
+      .from('buyers')
+      .select('*')
+      .eq('user_id', user.id)
+      .single();
+
+    if (!buyer) {
       return NextResponse.json({ error: 'Buyer not found' }, { status: 404 });
     }
 
@@ -95,7 +115,7 @@ export async function POST(request: NextRequest) {
       .insert({
         order_number: orderNumber,
         product_id: productId,
-        buyer_id: user.buyers.id,
+        buyer_id: buyer.id,
         farmer_id: farmerId,
         quantity,
         unit_price: unitPrice,
