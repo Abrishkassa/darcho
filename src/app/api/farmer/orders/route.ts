@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/app/lib/supabase';
 import { verifyFarmerSession } from '@/app/lib/auth';
+import { createNotification } from '@/app/lib/notifications';
 
 export const runtime = 'nodejs';
 
@@ -120,6 +121,23 @@ export async function PUT(request: NextRequest) {
 
     if (!updatedOrder) {
       return NextResponse.json({ success: false, error: 'Order not found or unauthorized' }, { status: 404 });
+    }
+
+    // Notify the buyer of the status change
+    const { data: buyerRow } = await supabase
+      .from('buyers')
+      .select('user_id')
+      .eq('id', updatedOrder.buyer_id)
+      .single();
+
+    if (buyerRow?.user_id) {
+      await createNotification({
+        userId: buyerRow.user_id,
+        type: 'order_status_change',
+        title: 'Order status updated',
+        message: `Order ${updatedOrder.order_number} is now ${status}`,
+        relatedOrderId: updatedOrder.id,
+      });
     }
 
     return NextResponse.json({ success: true, message: 'Order updated successfully', order: updatedOrder });

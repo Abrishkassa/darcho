@@ -1,0 +1,671 @@
+diff --git a/src/app/api/buyer/orders/route.ts b/src/app/api/buyer/orders/route.ts
+index b93fea7..f76244b 100644
+--- a/src/app/api/buyer/orders/route.ts
++++ b/src/app/api/buyer/orders/route.ts
+@@ -1,6 +1,7 @@
+ import { NextRequest, NextResponse } from 'next/server';
+ import { getServerSession } from 'next-auth';
+ import { supabase } from '@/app/lib/supabase';
++import { createNotification } from '@/app/lib/notifications';
+ 
+ export async function GET(request: NextRequest) {
+   try {
+@@ -139,6 +140,23 @@ export async function POST(request: NextRequest) {
+       amount: quantity 
+     }).single();
+ 
++    // Notify the farmer of the new order
++    const { data: farmerRow } = await supabase
++      .from('farmers')
++      .select('user_id')
++      .eq('id', farmerId)
++      .single();
++
++    if (farmerRow?.user_id) {
++      await createNotification({
++        userId: farmerRow.user_id,
++        type: 'new_order',
++        title: 'New order received',
++        message: `Order ${orderNumber} — ${quantity} units`,
++        relatedOrderId: order.id,
++      });
++    }
++
+     return NextResponse.json({
+       success: true,
+       message: 'Order placed successfully',
+diff --git a/src/app/api/farmer/orders/route.ts b/src/app/api/farmer/orders/route.ts
+index 7f65d5a..ce76fb8 100644
+--- a/src/app/api/farmer/orders/route.ts
++++ b/src/app/api/farmer/orders/route.ts
+@@ -1,6 +1,7 @@
+ import { NextRequest, NextResponse } from 'next/server';
+ import { supabase } from '@/app/lib/supabase';
+ import { verifyFarmerSession } from '@/app/lib/auth';
++import { createNotification } from '@/app/lib/notifications';
+ 
+ export const runtime = 'nodejs';
+ 
+@@ -122,6 +123,23 @@ export async function PUT(request: NextRequest) {
+       return NextResponse.json({ success: false, error: 'Order not found or unauthorized' }, { status: 404 });
+     }
+ 
++    // Notify the buyer of the status change
++    const { data: buyerRow } = await supabase
++      .from('buyers')
++      .select('user_id')
++      .eq('id', updatedOrder.buyer_id)
++      .single();
++
++    if (buyerRow?.user_id) {
++      await createNotification({
++        userId: buyerRow.user_id,
++        type: 'order_status_change',
++        title: 'Order status updated',
++        message: `Order ${updatedOrder.order_number} is now ${status}`,
++        relatedOrderId: updatedOrder.id,
++      });
++    }
++
+     return NextResponse.json({ success: true, message: 'Order updated successfully', order: updatedOrder });
+   } catch (error: any) {
+     console.error('Error updating order:', error);
+diff --git a/src/app/api/notifications/route.ts b/src/app/api/notifications/route.ts
+new file mode 100644
+index 0000000..7df2672
+--- /dev/null
++++ b/src/app/api/notifications/route.ts
+@@ -0,0 +1,101 @@
++import { NextRequest, NextResponse } from 'next/server';
++import { getServerSession } from 'next-auth';
++import { supabase } from '@/app/lib/supabase';
++
++export const runtime = 'nodejs';
++
++async function getSessionUserId(): Promise<number | null> {
++  const session = await getServerSession();
++  if (!session?.user?.email) return null;
++
++  const { data: user } = await supabase
++    .from('users')
++    .select('id')
++    .eq('email', session.user.email)
++    .single();
++
++  return user?.id ?? null;
++}
++
++// GET /api/notifications - recent notifications + unread count for the logged-in user (farmer or buyer)
++export async function GET(request: NextRequest) {
++  try {
++    const userId = await getSessionUserId();
++    if (!userId) {
++      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
++    }
++
++    const { data: notifications, error } = await supabase
++      .from('notifications')
++      .select('*')
++      .eq('user_id', userId)
++      .order('created_at', { ascending: false })
++      .limit(20);
++
++    if (error) throw error;
++
++    const { count: unreadCount, error: countError } = await supabase
++      .from('notifications')
++      .select('*', { count: 'exact', head: true })
++      .eq('user_id', userId)
++      .eq('is_read', false);
++
++    if (countError) throw countError;
++
++    return NextResponse.json({
++      success: true,
++      notifications: notifications || [],
++      unreadCount: unreadCount || 0,
++      userId,
++    });
++  } catch (error: any) {
++    console.error('Error fetching notifications:', error);
++    return NextResponse.json(
++      { success: false, error: error.message || 'Failed to fetch notifications', notifications: [], unreadCount: 0 },
++      { status: 500 }
++    );
++  }
++}
++
++// PUT /api/notifications - mark one notification as read, or all of them
++// body: { notificationId: number } or { markAllRead: true }
++export async function PUT(request: NextRequest) {
++  try {
++    const userId = await getSessionUserId();
++    if (!userId) {
++      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
++    }
++
++    const body = await request.json();
++
++    if (body.markAllRead) {
++      const { error } = await supabase
++        .from('notifications')
++        .update({ is_read: true })
++        .eq('user_id', userId)
++        .eq('is_read', false);
++
++      if (error) throw error;
++      return NextResponse.json({ success: true });
++    }
++
++    if (body.notificationId) {
++      const { error } = await supabase
++        .from('notifications')
++        .update({ is_read: true })
++        .eq('id', body.notificationId)
++        .eq('user_id', userId);
++
++      if (error) throw error;
++      return NextResponse.json({ success: true });
++    }
++
++    return NextResponse.json(
++      { success: false, error: 'notificationId or markAllRead is required' },
++      { status: 400 }
++    );
++  } catch (error: any) {
++    console.error('Error updating notification:', error);
++    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
++  }
++}
+diff --git a/src/app/buyer/page.tsx b/src/app/buyer/page.tsx
+index df4b9b5..22aaf37 100644
+--- a/src/app/buyer/page.tsx
++++ b/src/app/buyer/page.tsx
+@@ -1,7 +1,8 @@
+ "use client";
+ import { useSession } from "next-auth/react";
+-import { useState, useEffect } from "react";
++import { useState, useEffect, useRef } from "react";
+ import { motion, AnimatePresence } from "framer-motion";
++import { supabase } from "@/app/lib/supabase";
+ 
+ import { 
+   Home, 
+@@ -45,13 +46,18 @@ import {
+   MoreVertical,
+   Download,
+   Calendar,
+-  Target
++  Target,
++  Check
+ } from "lucide-react";
+ import Link from "next/link";
+ 
+ export default function BuyerDashboardPage() {
+   const [activeTab, setActiveTab] = useState<"overview" | "products" | "analytics" | "settings">("overview");
+-  const [notifications, setNotifications] = useState(5);
++  const [notifications, setNotifications] = useState<any[]>([]);
++  const [unreadCount, setUnreadCount] = useState(0);
++  const [notifPanelOpen, setNotifPanelOpen] = useState(false);
++  const [notifUserId, setNotifUserId] = useState<number | null>(null);
++  const notifPanelRef = useRef<HTMLDivElement>(null);
+   const [darkMode, setDarkMode] = useState(false);
+   const [sidebarOpen, setSidebarOpen] = useState(true);
+   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+@@ -75,6 +81,99 @@ export default function BuyerDashboardPage() {
+   const { data: session } = useSession();
+   const userName = session?.user?.name || "Guest";
+ 
++  const fetchNotifications = async () => {
++    try {
++      const res = await fetch("/api/notifications");
++      const data = await res.json();
++      if (data.success) {
++        setNotifications(data.notifications || []);
++        setUnreadCount(data.unreadCount || 0);
++        if (typeof data.userId === "number") setNotifUserId(data.userId);
++      }
++    } catch (err) {
++      console.error("Failed to load notifications:", err);
++    }
++  };
++
++  useEffect(() => {
++    if (session) {
++      fetchNotifications();
++    }
++  }, [session]);
++
++  useEffect(() => {
++    if (!notifUserId) return;
++
++    const channel = supabase
++      .channel(`buyer-notifications-${notifUserId}`)
++      .on(
++        "postgres_changes",
++        {
++          event: "INSERT",
++          schema: "public",
++          table: "notifications",
++          filter: `user_id=eq.${notifUserId}`,
++        },
++        (payload) => {
++          setNotifications((prev) => [payload.new, ...prev].slice(0, 20));
++          setUnreadCount((prev) => prev + 1);
++        }
++      )
++      .subscribe();
++
++    return () => {
++      supabase.removeChannel(channel);
++    };
++  }, [notifUserId]);
++
++  useEffect(() => {
++    const handleClickOutside = (event: MouseEvent) => {
++      if (notifPanelRef.current && !notifPanelRef.current.contains(event.target as Node)) {
++        setNotifPanelOpen(false);
++      }
++    };
++    document.addEventListener("mousedown", handleClickOutside);
++    return () => document.removeEventListener("mousedown", handleClickOutside);
++  }, []);
++
++  const markNotifAsRead = async (notificationId: number) => {
++    setNotifications((prev) => prev.map((n) => (n.id === notificationId ? { ...n, is_read: true } : n)));
++    setUnreadCount((prev) => Math.max(0, prev - 1));
++    try {
++      await fetch("/api/notifications", {
++        method: "PUT",
++        headers: { "Content-Type": "application/json" },
++        body: JSON.stringify({ notificationId }),
++      });
++    } catch (err) {
++      console.error("Failed to mark notification as read:", err);
++    }
++  };
++
++  const markAllNotifsAsRead = async () => {
++    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
++    setUnreadCount(0);
++    try {
++      await fetch("/api/notifications", {
++        method: "PUT",
++        headers: { "Content-Type": "application/json" },
++        body: JSON.stringify({ markAllRead: true }),
++      });
++    } catch (err) {
++      console.error("Failed to mark all notifications as read:", err);
++    }
++  };
++
++  const notifTimeAgo = (dateString: string) => {
++    const seconds = Math.floor((Date.now() - new Date(dateString).getTime()) / 1000);
++    if (seconds < 60) return "just now";
++    const minutes = Math.floor(seconds / 60);
++    if (minutes < 60) return `${minutes}m ago`;
++    const hours = Math.floor(minutes / 60);
++    if (hours < 24) return `${hours}h ago`;
++    return `${Math.floor(hours / 24)}d ago`;
++  };
++
+   useEffect(() => {
+     if (activeTab === 'products') {
+       setProductsLoading(true);
+@@ -537,12 +636,61 @@ export default function BuyerDashboardPage() {
+                   className={`pl-10 pr-4 py-2 rounded-lg border ${darkMode ? "bg-gray-800 border-gray-700 text-white" : "bg-white border-gray-300"} focus:outline-none focus:ring-2 focus:ring-amber-500`}
+                 />
+               </div>
+-              <button className="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+-                <Bell className="w-5 h-5" />
+-                {notifications > 0 && (
+-                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">{notifications}</span>
+-                )}
+-              </button>
++              <div className="relative" ref={notifPanelRef}>
++                <button
++                  onClick={() => setNotifPanelOpen((prev) => !prev)}
++                  className="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
++                >
++                  <Bell className="w-5 h-5" />
++                  {unreadCount > 0 && (
++                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">{unreadCount}</span>
++                  )}
++                </button>
++                <AnimatePresence>
++                  {notifPanelOpen && (
++                    <motion.div
++                      initial={{ opacity: 0, y: -10 }}
++                      animate={{ opacity: 1, y: 0 }}
++                      exit={{ opacity: 0, y: -10 }}
++                      className={`absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl shadow-2xl border z-50 ${
++                        darkMode ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200"
++                      }`}
++                    >
++                      <div className={`flex items-center justify-between px-4 py-3 border-b ${darkMode ? "border-gray-800" : "border-gray-100"}`}>
++                        <span className="font-semibold">Notifications</span>
++                        {unreadCount > 0 && (
++                          <button onClick={markAllNotifsAsRead} className="text-xs text-amber-600 hover:text-amber-700 font-medium">
++                            Mark all read
++                          </button>
++                        )}
++                      </div>
++                      {notifications.length === 0 ? (
++                        <div className={`px-4 py-8 text-center text-sm ${darkMode ? "text-gray-500" : "text-gray-400"}`}>
++                          No notifications yet
++                        </div>
++                      ) : (
++                        notifications.map((n) => (
++                          <button
++                            key={n.id}
++                            onClick={() => !n.is_read && markNotifAsRead(n.id)}
++                            className={`w-full text-left px-4 py-3 border-b transition-colors ${
++                              darkMode ? "border-gray-800 hover:bg-gray-800/50" : "border-gray-50 hover:bg-amber-50"
++                            } ${!n.is_read ? (darkMode ? "bg-gray-800/30" : "bg-amber-50/50") : ""}`}
++                          >
++                            <div className="flex items-start justify-between gap-2">
++                              <div className="font-medium text-sm">{n.title}</div>
++                              {!n.is_read && <span className="w-2 h-2 rounded-full bg-amber-500 mt-1.5 flex-shrink-0" />}
++                              {n.is_read && <Check className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 mt-0.5" />}
++                            </div>
++                            <div className={`text-xs mt-0.5 ${darkMode ? "text-gray-400" : "text-gray-600"}`}>{n.message}</div>
++                            <div className={`text-xs mt-1 ${darkMode ? "text-gray-500" : "text-gray-400"}`}>{notifTimeAgo(n.created_at)}</div>
++                          </button>
++                        ))
++                      )}
++                    </motion.div>
++                  )}
++                </AnimatePresence>
++              </div>
+               <Link href="/buyer/cart" className="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                 <ShoppingCart className="w-5 h-5" />
+                 {cartItems > 0 && (
+diff --git a/src/app/farmer/layout.tsx b/src/app/farmer/layout.tsx
+index 5a464ca..56ba863 100644
+--- a/src/app/farmer/layout.tsx
++++ b/src/app/farmer/layout.tsx
+@@ -1,8 +1,10 @@
+ "use client";
+ 
+-import { useState, useEffect } from "react";
++import { useState, useEffect, useRef } from "react";
++import { useSession } from "next-auth/react";
+ import { motion, AnimatePresence } from "framer-motion";
+ import Link from "next/link";
++import { supabase } from "@/app/lib/supabase";
+ import { 
+   Menu, 
+   X, 
+@@ -24,17 +26,131 @@ import {
+   Coffee,
+   TrendingUp,
+   Shield,
+-  Zap
++  Zap,
++  Check
+ } from "lucide-react";
+ import { usePathname } from "next/navigation";
+ 
++interface NotificationItem {
++  id: number;
++  type: string;
++  title: string;
++  message: string;
++  related_order_id: number | null;
++  is_read: boolean;
++  created_at: string;
++}
++
+ export default function FarmerLayout({ children }: { children: React.ReactNode }) {
++  const { data: session } = useSession();
+   const [sidebarOpen, setSidebarOpen] = useState(true);
+   const [darkMode, setDarkMode] = useState(false);
+-  const [notifications, setNotifications] = useState(3);
++  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
++  const [unreadCount, setUnreadCount] = useState(0);
++  const [notifPanelOpen, setNotifPanelOpen] = useState(false);
++  const [notifUserId, setNotifUserId] = useState<number | null>(null);
+   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
++  const notifPanelRef = useRef<HTMLDivElement>(null);
+   const pathname = usePathname();
+ 
++  const fetchNotifications = async () => {
++    try {
++      const res = await fetch("/api/notifications");
++      const data = await res.json();
++      if (data.success) {
++        setNotifications(data.notifications || []);
++        setUnreadCount(data.unreadCount || 0);
++        if (typeof data.userId === "number") setNotifUserId(data.userId);
++      }
++    } catch (err) {
++      console.error("Failed to load notifications:", err);
++    }
++  };
++
++  useEffect(() => {
++    if (session) {
++      fetchNotifications();
++    }
++  }, [session]);
++
++  // Realtime: new notifications for this user push straight into the bell
++  useEffect(() => {
++    if (!notifUserId) return;
++
++    const channel = supabase
++      .channel(`farmer-notifications-${notifUserId}`)
++      .on(
++        "postgres_changes",
++        {
++          event: "INSERT",
++          schema: "public",
++          table: "notifications",
++          filter: `user_id=eq.${notifUserId}`,
++        },
++        (payload) => {
++          const newNotif = payload.new as NotificationItem;
++          setNotifications((prev) => [newNotif, ...prev].slice(0, 20));
++          setUnreadCount((prev) => prev + 1);
++        }
++      )
++      .subscribe();
++
++    return () => {
++      supabase.removeChannel(channel);
++    };
++  }, [notifUserId]);
++
++  // Close the notification panel when clicking outside it
++  useEffect(() => {
++    const handleClickOutside = (event: MouseEvent) => {
++      if (notifPanelRef.current && !notifPanelRef.current.contains(event.target as Node)) {
++        setNotifPanelOpen(false);
++      }
++    };
++    document.addEventListener("mousedown", handleClickOutside);
++    return () => document.removeEventListener("mousedown", handleClickOutside);
++  }, []);
++
++  const markAsRead = async (notificationId: number) => {
++    setNotifications((prev) =>
++      prev.map((n) => (n.id === notificationId ? { ...n, is_read: true } : n))
++    );
++    setUnreadCount((prev) => Math.max(0, prev - 1));
++    try {
++      await fetch("/api/notifications", {
++        method: "PUT",
++        headers: { "Content-Type": "application/json" },
++        body: JSON.stringify({ notificationId }),
++      });
++    } catch (err) {
++      console.error("Failed to mark notification as read:", err);
++    }
++  };
++
++  const markAllAsRead = async () => {
++    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
++    setUnreadCount(0);
++    try {
++      await fetch("/api/notifications", {
++        method: "PUT",
++        headers: { "Content-Type": "application/json" },
++        body: JSON.stringify({ markAllRead: true }),
++      });
++    } catch (err) {
++      console.error("Failed to mark all notifications as read:", err);
++    }
++  };
++
++  const timeAgo = (dateString: string) => {
++    const seconds = Math.floor((Date.now() - new Date(dateString).getTime()) / 1000);
++    if (seconds < 60) return "just now";
++    const minutes = Math.floor(seconds / 60);
++    if (minutes < 60) return `${minutes}m ago`;
++    const hours = Math.floor(minutes / 60);
++    if (hours < 24) return `${hours}h ago`;
++    return `${Math.floor(hours / 24)}d ago`;
++  };
++
+   const navItems = [
+     { 
+       href: "/farmer", 
+@@ -156,22 +272,81 @@ export default function FarmerLayout({ children }: { children: React.ReactNode }
+               </div>
+ 
+               {/* Notifications */}
+-              <button className="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+-                <Bell className="w-5 h-5" />
+-                {notifications > 0 && (
+-                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+-                    {notifications}
+-                  </span>
+-                )}
+-              </button>
++              <div className="relative" ref={notifPanelRef}>
++                <button
++                  onClick={() => setNotifPanelOpen((prev) => !prev)}
++                  className="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
++                >
++                  <Bell className="w-5 h-5" />
++                  {unreadCount > 0 && (
++                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
++                      {unreadCount}
++                    </span>
++                  )}
++                </button>
++
++                <AnimatePresence>
++                  {notifPanelOpen && (
++                    <motion.div
++                      initial={{ opacity: 0, y: -10 }}
++                      animate={{ opacity: 1, y: 0 }}
++                      exit={{ opacity: 0, y: -10 }}
++                      className={`absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl shadow-2xl border z-50 ${
++                        darkMode ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200"
++                      }`}
++                    >
++                      <div className={`flex items-center justify-between px-4 py-3 border-b ${darkMode ? "border-gray-800" : "border-gray-100"}`}>
++                        <span className="font-semibold">Notifications</span>
++                        {unreadCount > 0 && (
++                          <button
++                            onClick={markAllAsRead}
++                            className="text-xs text-amber-600 hover:text-amber-700 font-medium"
++                          >
++                            Mark all read
++                          </button>
++                        )}
++                      </div>
++                      {notifications.length === 0 ? (
++                        <div className={`px-4 py-8 text-center text-sm ${darkMode ? "text-gray-500" : "text-gray-400"}`}>
++                          No notifications yet
++                        </div>
++                      ) : (
++                        notifications.map((n) => (
++                          <button
++                            key={n.id}
++                            onClick={() => !n.is_read && markAsRead(n.id)}
++                            className={`w-full text-left px-4 py-3 border-b transition-colors ${
++                              darkMode ? "border-gray-800 hover:bg-gray-800/50" : "border-gray-50 hover:bg-amber-50"
++                            } ${!n.is_read ? (darkMode ? "bg-gray-800/30" : "bg-amber-50/50") : ""}`}
++                          >
++                            <div className="flex items-start justify-between gap-2">
++                              <div className="font-medium text-sm">{n.title}</div>
++                              {!n.is_read && <span className="w-2 h-2 rounded-full bg-amber-500 mt-1.5 flex-shrink-0" />}
++                              {n.is_read && <Check className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 mt-0.5" />}
++                            </div>
++                            <div className={`text-xs mt-0.5 ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
++                              {n.message}
++                            </div>
++                            <div className={`text-xs mt-1 ${darkMode ? "text-gray-500" : "text-gray-400"}`}>
++                              {timeAgo(n.created_at)}
++                            </div>
++                          </button>
++                        ))
++                      )}
++                    </motion.div>
++                  )}
++                </AnimatePresence>
++              </div>
+ 
+               {/* Farmer Profile */}
+               <div className="flex items-center gap-3">
+                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center">
+-                  <span className="font-bold text-white">A</span>
++                  <span className="font-bold text-white">
++                    {session?.user?.name ? session.user.name.charAt(0).toUpperCase() : "F"}
++                  </span>
+                 </div>
+                 <div className="hidden md:block">
+-                  <div className="font-medium">Abriham Kassa</div>
++                  <div className="font-medium">{session?.user?.name || "Farmer"}</div>
+                   <div className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-600"}`}>Coffee Farmer</div>
+                 </div>
+               </div>
+diff --git a/src/app/lib/notifications.ts b/src/app/lib/notifications.ts
+new file mode 100644
+index 0000000..afb4246
+--- /dev/null
++++ b/src/app/lib/notifications.ts
+@@ -0,0 +1,41 @@
++import { supabase } from './supabase';
++
++export type NotificationType = 'new_order' | 'order_status_change' | 'new_message';
++
++interface CreateNotificationParams {
++  userId: number;
++  type: NotificationType;
++  title: string;
++  message: string;
++  relatedOrderId?: number | null;
++}
++
++/**
++ * Insert a notification for a user. Failures are logged but never thrown —
++ * a notification failing to send should never break the order/chat action
++ * that triggered it.
++ */
++export async function createNotification({
++  userId,
++  type,
++  title,
++  message,
++  relatedOrderId = null,
++}: CreateNotificationParams): Promise<void> {
++  try {
++    const { error } = await supabase.from('notifications').insert({
++      user_id: userId,
++      type,
++      title,
++      message,
++      related_order_id: relatedOrderId,
++      is_read: false,
++    });
++
++    if (error) {
++      console.error('Failed to create notification:', error);
++    }
++  } catch (err) {
++    console.error('Failed to create notification:', err);
++  }
++}

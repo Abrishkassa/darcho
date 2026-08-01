@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useSession } from "next-auth/react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+import { supabase } from "@/app/lib/supabase";
 import { 
   Menu, 
   X, 
@@ -24,16 +26,130 @@ import {
   Coffee,
   TrendingUp,
   Shield,
-  Zap
+  Zap,
+  Check
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 
+interface NotificationItem {
+  id: number;
+  type: string;
+  title: string;
+  message: string;
+  related_order_id: number | null;
+  is_read: boolean;
+  created_at: string;
+}
+
 export default function FarmerLayout({ children }: { children: React.ReactNode }) {
+  const { data: session } = useSession();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [darkMode, setDarkMode] = useState(false);
-  const [notifications, setNotifications] = useState(3);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifPanelOpen, setNotifPanelOpen] = useState(false);
+  const [notifUserId, setNotifUserId] = useState<number | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const notifPanelRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
+
+  const fetchNotifications = async () => {
+    try {
+      const res = await fetch("/api/notifications");
+      const data = await res.json();
+      if (data.success) {
+        setNotifications(data.notifications || []);
+        setUnreadCount(data.unreadCount || 0);
+        if (typeof data.userId === "number") setNotifUserId(data.userId);
+      }
+    } catch (err) {
+      console.error("Failed to load notifications:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (session) {
+      fetchNotifications();
+    }
+  }, [session]);
+
+  // Realtime: new notifications for this user push straight into the bell
+  useEffect(() => {
+    if (!notifUserId) return;
+
+    const channel = supabase
+      .channel(`farmer-notifications-${notifUserId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${notifUserId}`,
+        },
+        (payload) => {
+          const newNotif = payload.new as NotificationItem;
+          setNotifications((prev) => [newNotif, ...prev].slice(0, 20));
+          setUnreadCount((prev) => prev + 1);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [notifUserId]);
+
+  // Close the notification panel when clicking outside it
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (notifPanelRef.current && !notifPanelRef.current.contains(event.target as Node)) {
+        setNotifPanelOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const markAsRead = async (notificationId: number) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === notificationId ? { ...n, is_read: true } : n))
+    );
+    setUnreadCount((prev) => Math.max(0, prev - 1));
+    try {
+      await fetch("/api/notifications", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notificationId }),
+      });
+    } catch (err) {
+      console.error("Failed to mark notification as read:", err);
+    }
+  };
+
+  const markAllAsRead = async () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    setUnreadCount(0);
+    try {
+      await fetch("/api/notifications", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ markAllRead: true }),
+      });
+    } catch (err) {
+      console.error("Failed to mark all notifications as read:", err);
+    }
+  };
+
+  const timeAgo = (dateString: string) => {
+    const seconds = Math.floor((Date.now() - new Date(dateString).getTime()) / 1000);
+    if (seconds < 60) return "just now";
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
+  };
 
   const navItems = [
     { 
@@ -156,22 +272,81 @@ export default function FarmerLayout({ children }: { children: React.ReactNode }
               </div>
 
               {/* Notifications */}
-              <button className="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                <Bell className="w-5 h-5" />
-                {notifications > 0 && (
-                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                    {notifications}
-                  </span>
-                )}
-              </button>
+              <div className="relative" ref={notifPanelRef}>
+                <button
+                  onClick={() => setNotifPanelOpen((prev) => !prev)}
+                  className="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                >
+                  <Bell className="w-5 h-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+                      {unreadCount}
+                    </span>
+                  )}
+                </button>
+
+                <AnimatePresence>
+                  {notifPanelOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className={`absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl shadow-2xl border z-50 ${
+                        darkMode ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200"
+                      }`}
+                    >
+                      <div className={`flex items-center justify-between px-4 py-3 border-b ${darkMode ? "border-gray-800" : "border-gray-100"}`}>
+                        <span className="font-semibold">Notifications</span>
+                        {unreadCount > 0 && (
+                          <button
+                            onClick={markAllAsRead}
+                            className="text-xs text-amber-600 hover:text-amber-700 font-medium"
+                          >
+                            Mark all read
+                          </button>
+                        )}
+                      </div>
+                      {notifications.length === 0 ? (
+                        <div className={`px-4 py-8 text-center text-sm ${darkMode ? "text-gray-500" : "text-gray-400"}`}>
+                          No notifications yet
+                        </div>
+                      ) : (
+                        notifications.map((n) => (
+                          <button
+                            key={n.id}
+                            onClick={() => !n.is_read && markAsRead(n.id)}
+                            className={`w-full text-left px-4 py-3 border-b transition-colors ${
+                              darkMode ? "border-gray-800 hover:bg-gray-800/50" : "border-gray-50 hover:bg-amber-50"
+                            } ${!n.is_read ? (darkMode ? "bg-gray-800/30" : "bg-amber-50/50") : ""}`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="font-medium text-sm">{n.title}</div>
+                              {!n.is_read && <span className="w-2 h-2 rounded-full bg-amber-500 mt-1.5 flex-shrink-0" />}
+                              {n.is_read && <Check className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 mt-0.5" />}
+                            </div>
+                            <div className={`text-xs mt-0.5 ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
+                              {n.message}
+                            </div>
+                            <div className={`text-xs mt-1 ${darkMode ? "text-gray-500" : "text-gray-400"}`}>
+                              {timeAgo(n.created_at)}
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
 
               {/* Farmer Profile */}
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center">
-                  <span className="font-bold text-white">A</span>
+                  <span className="font-bold text-white">
+                    {session?.user?.name ? session.user.name.charAt(0).toUpperCase() : "F"}
+                  </span>
                 </div>
                 <div className="hidden md:block">
-                  <div className="font-medium">Abriham Kassa</div>
+                  <div className="font-medium">{session?.user?.name || "Farmer"}</div>
                   <div className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-600"}`}>Coffee Farmer</div>
                 </div>
               </div>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { supabase } from '@/app/lib/supabase';
+import { createNotification } from '@/app/lib/notifications';
 
 export async function GET(request: NextRequest) {
   try {
@@ -137,6 +138,23 @@ export async function POST(request: NextRequest) {
       product_id: productId, 
       amount: quantity 
     }).single();
+
+    // Notify the farmer of the new order
+    const { data: farmerRow } = await supabase
+      .from('farmers')
+      .select('user_id')
+      .eq('id', farmerId)
+      .single();
+
+    if (farmerRow?.user_id) {
+      await createNotification({
+        userId: farmerRow.user_id,
+        type: 'new_order',
+        title: 'New order received',
+        message: `Order ${orderNumber} — ${quantity} units`,
+        relatedOrderId: order.id,
+      });
+    }
 
     return NextResponse.json({
       success: true,
