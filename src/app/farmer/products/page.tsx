@@ -175,14 +175,14 @@ export default function ProductsPage() {
     <div className="min-h-screen bg-amber-50 p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-amber-900">Your Products</h1>
             <p className="text-gray-600">
               Farmer ID: <span className="font-medium">{farmerId || 'Not set'}</span>
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={fetchProducts}
               className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition"
@@ -235,7 +235,7 @@ export default function ProductsPage() {
 
         {/* Products Grid */}
         {products.length > 0 ? (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {products.map((product) => {
               const quantity = safeNumber(product.quantity);
               const price = safeNumber(product.price);
@@ -246,16 +246,16 @@ export default function ProductsPage() {
                   key={product.id} 
                   className="p-5 bg-white shadow-lg rounded-xl border border-amber-100 hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
                 >
-                  <div className="flex justify-between items-start mb-3">
-                    <div>
-                      <h3 className="font-bold text-xl text-amber-900">{product.name}</h3>
+                  <div className="flex justify-between items-start gap-2 mb-3">
+                    <div className="min-w-0">
+                      <h3 className="font-bold text-xl text-amber-900 break-words">{product.name}</h3>
                       {product.category && (
                         <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
                           {product.category}
                         </span>
                       )}
                     </div>
-                    <span className="text-xs text-gray-500">ID: {product.id}</span>
+                    <span className="text-xs text-gray-500 shrink-0">ID: {product.id}</span>
                   </div>
                   
                   {product.description && (
@@ -320,7 +320,7 @@ export default function ProductsPage() {
             <p className="text-gray-500 mb-6">
               You haven't added any products yet. Start by adding your first product.
             </p>
-            <div className="space-x-4">
+            <div className="flex flex-wrap justify-center gap-4">
               <button
                 onClick={() => console.log("Add product clicked")}
                 className="px-6 py-3 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition"

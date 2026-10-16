@@ -496,17 +496,17 @@ export default function BuyerDashboardPage() {
       case "products":
         return (
           <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className={`text-2xl font-bold ${darkMode ? "text-white" : "text-gray-900"}`}>Browse Coffee Products</h2>
                 <p className={`mt-1 ${darkMode ? "text-gray-400" : "text-gray-600"}`}>Direct from Ethiopian farmers</p>
               </div>
-              <div className="relative">
+              <div className="relative w-full sm:w-auto">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input type="text" placeholder="Search products..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className={`pl-10 pr-4 py-2 rounded-lg border ${darkMode ? "bg-gray-800 border-gray-700 text-white" : "bg-white border-gray-300"} focus:outline-none focus:ring-2 focus:ring-amber-500`}
+                  className={`w-full pl-10 pr-4 py-2 rounded-lg border ${darkMode ? "bg-gray-800 border-gray-700 text-white" : "bg-white border-gray-300"} focus:outline-none focus:ring-2 focus:ring-amber-500`}
                 />
               </div>
             </div>
@@ -522,7 +522,7 @@ export default function BuyerDashboardPage() {
                 <p className={darkMode ? "text-gray-400" : "text-gray-600"}>No products available yet</p>
               </div>
             ) : (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                 {realProducts
                   .filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
                   .map((product) => (
@@ -531,7 +531,7 @@ export default function BuyerDashboardPage() {
                       <Coffee className="w-16 h-16 text-white opacity-80" />
                     </div>
                     <div className="p-5">
-                      <div className="flex items-start justify-between mb-2">
+                      <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
                         <h3 className={`font-bold text-lg ${darkMode ? "text-white" : "text-gray-900"}`}>{product.name}</h3>
                         <span className={`px-2 py-1 rounded-full text-xs ${darkMode ? "bg-amber-900/30 text-amber-400" : "bg-amber-100 text-amber-700"}`}>{product.grade} Grade</span>
                       </div>
@@ -544,7 +544,7 @@ export default function BuyerDashboardPage() {
                         <User className="w-4 h-4" />
                         {product.farmers?.users?.full_name} • {product.farmers?.farm_name}
                       </div>
-                      <div className="flex items-center justify-between">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
                           <div className="text-xl font-bold text-amber-500">ETB {product.price_per_unit}/kg</div>
                           <div className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>{product.quantity} kg available</div>
@@ -605,7 +605,7 @@ export default function BuyerDashboardPage() {
       <nav className={`sticky top-0 z-40 backdrop-blur-xl border-b ${darkMode ? "bg-gray-900/80 border-gray-800" : "bg-white/80 border-gray-200"}`}>
         <div className="px-4 md:px-6 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 sm:gap-4">
               <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 className={`md:hidden p-2 rounded-lg ${darkMode ? "hover:bg-gray-800 text-gray-300" : "hover:bg-gray-100 text-gray-600"} transition-colors`}>
                 {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -616,14 +616,14 @@ export default function BuyerDashboardPage() {
               </button>
               <div className="flex items-center gap-3">
                 <Coffee className="w-6 h-6 text-amber-600" />
-                <div>
+                <div className="hidden sm:block">
                   <h1 className="text-xl font-bold">Buyer Dashboard</h1>
                   <p className="text-sm text-gray-600 dark:text-gray-400">Direct trade with Ethiopian farmers</p>
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 sm:gap-4">
               <button onClick={() => setDarkMode(!darkMode)}
                 className={`p-2 rounded-lg transition-colors ${darkMode ? "bg-gray-800 text-amber-400 hover:bg-gray-700" : "bg-white text-amber-600 hover:bg-amber-50 border border-gray-200"}`}>
                 {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
@@ -705,7 +705,7 @@ export default function BuyerDashboardPage() {
                   <div className="font-medium">{userName}</div>
                   <div className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-600"}`}>Premium Buyer</div>
                 </div>
-                <button className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
+                <button className="hidden sm:block p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
                   <MoreVertical className="w-5 h-5" />
                 </button>
               </div>
@@ -793,7 +793,7 @@ export default function BuyerDashboardPage() {
           )}
         </AnimatePresence>
 
-        <main className="flex-1 p-4 md:p-6">
+        <main className="flex-1 p-4 pb-24 md:p-6 md:pb-6">
           <div className={`mb-6 p-4 rounded-2xl backdrop-blur-sm border ${darkMode ? "bg-gray-800/50 border-gray-700" : "bg-white/80 border-gray-200"} shadow-lg`}>
             <div className="flex flex-wrap gap-2">
               {tabs.map(tab => {
@@ -918,8 +918,8 @@ export default function BuyerDashboardPage() {
                     />
                   </div>
                 </div>
-                <div className="flex gap-3 mt-6">
-                  <button onClick={() => setShowOrderModal(false)} className="flex-1 py-2 rounded-lg border border-gray-300 hover:bg-gray-50">Cancel</button>
+                <div className="flex flex-col sm:flex-row gap-3 mt-6">
+                  <button onClick={() => setShowOrderModal(false)} className="w-full sm:flex-1 py-2 rounded-lg border border-gray-300 hover:bg-gray-50">Cancel</button>
                   <button onClick={handleOrder}
                     disabled={orderSubmitting || !orderForm.quantity || !orderForm.deliveryLocation || !orderForm.deliveryDate}
                     className="flex-1 py-2 rounded-lg bg-gradient-to-r from-amber-600 to-orange-600 text-white hover:shadow-lg disabled:opacity-50">
