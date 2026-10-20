@@ -237,11 +237,6 @@ function BuyerShell({ children }: { children: React.ReactNode }) {
     };
   }, [status, pathname]);
 
-  // Close the mobile drawer when the route changes
-  useEffect(() => {
-    setMobileMenuOpen(false);
-  }, [pathname]);
-
   const isActive = (href: string) => (href === "/buyer" ? pathname === href : pathname.startsWith(href));
 
   const userName = session?.user?.name || "Buyer";
@@ -254,6 +249,7 @@ function BuyerShell({ children }: { children: React.ReactNode }) {
       <Link
         key={item.href}
         href={item.href}
+        onClick={() => setMobileMenuOpen(false)}
         className={`w-full flex items-center gap-3 px-4 ${
           compact ? "py-3" : "py-2.5"
         } rounded-xl transition-colors duration-200 ${

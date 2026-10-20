@@ -1,11 +1,13 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useState, ReactNode } from "react";
 
 interface BuyerThemeContextValue {
   dark: boolean;
   toggle: () => void;
 }
+
+const STORAGE_KEY = "darcho-buyer-theme";
 
 const BuyerThemeContext = createContext<BuyerThemeContextValue>({
   dark: false,
@@ -16,23 +18,27 @@ export function useBuyerTheme() {
   return useContext(BuyerThemeContext);
 }
 
+/** Read the saved preference. Safe to call during render on the client. */
+function readSavedTheme(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(STORAGE_KEY) === "dark";
+}
+
 export function BuyerThemeProvider({ children }: { children: ReactNode }) {
-  const [dark, setDark] = useState(false);
+  // Lazy initializer reads the stored preference during the first render,
+  // avoiding a post-mount effect that would cause a cascading render.
+  const [dark, setDark] = useState<boolean>(readSavedTheme);
 
-  // Read saved preference once on mount
+  // Apply to <html> so native form controls, scrollbars and dark: variants match
   useEffect(() => {
-    const saved = localStorage.getItem("darcho-buyer-theme");
-    if (saved === "dark") setDark(true);
-  }, []);
-
-  // Persist + apply to <html> so native form controls and scrollbars match too
-  useEffect(() => {
-    localStorage.setItem("darcho-buyer-theme", dark ? "dark" : "light");
+    localStorage.setItem(STORAGE_KEY, dark ? "dark" : "light");
     document.documentElement.classList.toggle("dark", dark);
   }, [dark]);
 
+  const toggle = useCallback(() => setDark((d) => !d), []);
+
   return (
-    <BuyerThemeContext.Provider value={{ dark, toggle: () => setDark((d) => !d) }}>
+    <BuyerThemeContext.Provider value={{ dark, toggle }}>
       {children}
     </BuyerThemeContext.Provider>
   );
