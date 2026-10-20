@@ -751,7 +751,9 @@ export default function DarchoBackground() {
             
             {/* Modal */}
             <motion.div
-              className="relative w-full max-w-md z-10"
+              className={`relative w-full z-10 max-h-[90vh] overflow-y-auto ${
+                activeModal === "register" ? "max-w-4xl" : "max-w-md"
+              }`}
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
@@ -759,7 +761,7 @@ export default function DarchoBackground() {
               <div className={`rounded-3xl overflow-hidden shadow-2xl ${
                 dark ? "bg-gray-900" : "bg-white"
               }`}>
-                <div className="p-8">
+                <div className="p-6 sm:p-8">
                   <button
                     onClick={() => setActiveModal(null)}
                     className={`absolute top-6 right-6 p-2 rounded-full ${

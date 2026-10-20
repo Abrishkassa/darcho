@@ -84,31 +84,32 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col items-center justify-center p-4">
-      {/* Decorative background elements */}
-      <div className="absolute top-0 left-0 w-full h-96 bg-gradient-to-r from-emerald-50/20 to-green-50/20 -skew-y-6 transform -translate-y-48"></div>
-      <div className="absolute bottom-0 right-0 w-full h-96 bg-gradient-to-l from-amber-50/10 to-orange-50/10 skew-y-6 transform translate-y-48"></div>
+    <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-emerald-50 via-white to-amber-50 flex flex-col items-center justify-center p-4">
+      {/* Animated background elements */}
+      <div className="absolute top-0 left-0 w-96 h-96 bg-gradient-to-br from-emerald-200/40 to-green-200/40 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2 animate-pulse"></div>
+      <div className="absolute bottom-0 right-0 w-96 h-96 bg-gradient-to-tl from-amber-200/40 to-orange-200/40 rounded-full blur-3xl translate-x-1/2 translate-y-1/2 animate-pulse" style={{ animationDelay: '1s' }}></div>
+      <div className="absolute top-1/3 right-1/4 w-64 h-64 bg-gradient-to-l from-emerald-100/30 to-green-100/30 rounded-full blur-2xl"></div>
 
-      <div className="relative w-full max-w-4xl">
+      <div className="relative w-full max-w-5xl z-10">
         {/* Logo/Brand */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-amber-500 to-orange-500 rounded-2xl shadow-lg mb-4">
-            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-emerald-500 via-green-500 to-emerald-600 rounded-3xl shadow-2xl mb-6 transform hover:scale-105 transition-transform duration-300">
+            <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path>
             </svg>
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Join Darcho Marketplace</h1>
-          <p className="text-gray-600">Create your account to start trading coffee directly</p>
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-emerald-600 to-green-600 bg-clip-text text-transparent mb-2">Join Darcho</h1>
+          <p className="text-gray-600 text-lg">Start your direct coffee trading journey today</p>
         </div>
 
         {/* Main Card */}
-        <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
+        <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl overflow-hidden border border-white/20">
           <div className="md:flex">
             {/* Left side - Form */}
-            <div className="md:w-1/2 p-8">
+            <div className="md:w-1/2 p-8 lg:p-10">
               <div className="mb-6">
                 <h2 className="text-2xl font-bold text-gray-900">Create Your Account</h2>
-                <p className="text-gray-600 text-sm mt-1">Fill in your details to get started</p>
+                <p className="text-gray-600 mt-1">Fill in your details to get started</p>
               </div>
 
               {error && (
@@ -132,35 +133,43 @@ export default function RegisterPage() {
               <form onSubmit={handleSubmit} className="space-y-6">
                 {/* Role Selection */}
                 <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">I want to join as</label>
-                  <div className="flex space-x-4">
+                  <label className="block text-sm font-semibold text-gray-700">I want to join as</label>
+                  <div className="grid grid-cols-2 gap-3">
                     <button
                       type="button"
                       onClick={() => setFormData(prev => ({ ...prev, role: "farmer" }))}
-                      className={`flex-1 py-3 px-4 rounded-xl border-2 transition-all duration-200 flex items-center justify-center space-x-2 ${formData.role === "farmer" 
-                        ? "border-green-500 bg-green-50 text-green-700 shadow-sm" 
-                        : "border-gray-200 hover:border-green-300 text-gray-700"}`}
+                      className={`py-3 px-4 rounded-2xl border-2 transition-all duration-300 flex items-center justify-center space-x-2 transform hover:scale-105 ${
+                        formData.role === "farmer" 
+                          ? "border-green-500 bg-gradient-to-r from-green-50 to-emerald-50 text-green-700 shadow-lg" 
+                          : "border-gray-200 hover:border-green-300 hover:bg-green-50/50 text-gray-700"
+                      }`}
                     >
-                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${formData.role === "farmer" ? "border-green-500 bg-green-500" : "border-gray-300"}`}>
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                        formData.role === "farmer" ? "border-green-500 bg-green-500" : "border-gray-300"
+                      }`}>
                         {formData.role === "farmer" && (
                           <div className="w-2 h-2 rounded-full bg-white"></div>
                         )}
                       </div>
-                      <span className="font-medium">Farmer</span>
+                      <span className="font-semibold">🌱 Farmer</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setFormData(prev => ({ ...prev, role: "buyer" }))}
-                      className={`flex-1 py-3 px-4 rounded-xl border-2 transition-all duration-200 flex items-center justify-center space-x-2 ${formData.role === "buyer" 
-                        ? "border-blue-500 bg-blue-50 text-blue-700 shadow-sm" 
-                        : "border-gray-200 hover:border-blue-300 text-gray-700"}`}
+                      className={`py-3 px-4 rounded-2xl border-2 transition-all duration-300 flex items-center justify-center space-x-2 transform hover:scale-105 ${
+                        formData.role === "buyer" 
+                          ? "border-blue-500 bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 shadow-lg" 
+                          : "border-gray-200 hover:border-blue-300 hover:bg-blue-50/50 text-gray-700"
+                      }`}
                     >
-                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${formData.role === "buyer" ? "border-blue-500 bg-blue-500" : "border-gray-300"}`}>
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                        formData.role === "buyer" ? "border-blue-500 bg-blue-500" : "border-gray-300"
+                      }`}>
                         {formData.role === "buyer" && (
                           <div className="w-2 h-2 rounded-full bg-white"></div>
                         )}
                       </div>
-                      <span className="font-medium">Buyer</span>
+                      <span className="font-semibold">🛒 Buyer</span>
                     </button>
                   </div>
                 </div>
@@ -170,9 +179,9 @@ export default function RegisterPage() {
                   <label htmlFor="fullName" className="block text-sm font-medium text-gray-700">
                     Full Name *
                   </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <div className="relative group">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                      <svg className="h-5 w-5 text-gray-400 group-focus-within:text-amber-500 transition-colors duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
                       </svg>
                     </div>
@@ -183,8 +192,8 @@ export default function RegisterPage() {
                       required
                       value={formData.fullName}
                       onChange={handleChange}
-                      className="block w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent focus:outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50/50"
-                      placeholder="John Doe"
+                      className="block w-full pl-12 pr-4 py-3.5 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-amber-500/10 focus:border-amber-500 focus:outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-white/50 hover:bg-white"
+                      placeholder="Enter your full name"
                       disabled={loading}
                     />
                   </div>
@@ -195,9 +204,9 @@ export default function RegisterPage() {
                     <label htmlFor="email" className="block text-sm font-medium text-gray-700">
                       Email Address *
                     </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <div className="relative group">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <svg className="h-5 w-5 text-gray-400 group-focus-within:text-amber-500 transition-colors duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"></path>
                         </svg>
                       </div>
@@ -208,7 +217,7 @@ export default function RegisterPage() {
                         required
                         value={formData.email}
                         onChange={handleChange}
-                        className="block w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent focus:outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50/50"
+                        className="block w-full pl-12 pr-4 py-3.5 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-amber-500/10 focus:border-amber-500 focus:outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-white/50 hover:bg-white"
                         placeholder="you@example.com"
                         disabled={loading}
                       />
@@ -219,9 +228,9 @@ export default function RegisterPage() {
                     <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
                       Phone Number *
                     </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <div className="relative group">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <svg className="h-5 w-5 text-gray-400 group-focus-within:text-amber-500 transition-colors duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
                         </svg>
                       </div>
@@ -232,8 +241,8 @@ export default function RegisterPage() {
                         required
                         value={formData.phone}
                         onChange={handleChange}
-                        className="block w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent focus:outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50/50"
-                        placeholder="+1234567890"
+                        className="block w-full pl-12 pr-4 py-3.5 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-amber-500/10 focus:border-amber-500 focus:outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-white/50 hover:bg-white"
+                        placeholder="+251 911 234 567"
                         disabled={loading}
                       />
                     </div>
@@ -245,9 +254,9 @@ export default function RegisterPage() {
                     <label htmlFor="password" className="block text-sm font-medium text-gray-700">
                       Password *
                     </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <div className="relative group">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <svg className="h-5 w-5 text-gray-400 group-focus-within:text-amber-500 transition-colors duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
                         </svg>
                       </div>
@@ -258,8 +267,8 @@ export default function RegisterPage() {
                         required
                         value={formData.password}
                         onChange={handleChange}
-                        className="block w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent focus:outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50/50"
-                        placeholder="At least 6 characters"
+                        className="block w-full pl-12 pr-4 py-3.5 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-amber-500/10 focus:border-amber-500 focus:outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-white/50 hover:bg-white"
+                        placeholder="Min 6 characters"
                         disabled={loading}
                       />
                     </div>
@@ -270,9 +279,9 @@ export default function RegisterPage() {
                     <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
                       Confirm Password *
                     </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <div className="relative group">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <svg className="h-5 w-5 text-gray-400 group-focus-within:text-amber-500 transition-colors duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
                         </svg>
                       </div>
@@ -283,8 +292,8 @@ export default function RegisterPage() {
                         required
                         value={formData.confirmPassword}
                         onChange={handleChange}
-                        className="block w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-transparent focus:outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50/50"
-                        placeholder="Re-enter your password"
+                        className="block w-full pl-12 pr-4 py-3.5 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-amber-500/10 focus:border-amber-500 focus:outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-white/50 hover:bg-white"
+                        placeholder="Re-enter password"
                         disabled={loading}
                       />
                     </div>
@@ -293,19 +302,19 @@ export default function RegisterPage() {
 
                 {/* Role-specific fields */}
                 {formData.role === 'farmer' && (
-                  <div className="space-y-4 p-4 bg-green-50/50 border border-green-100 rounded-xl">
+                  <div className="space-y-4 p-5 bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200/50 rounded-2xl">
                     <div className="flex items-center space-x-2">
-                      <div className="w-6 h-6 bg-green-100 rounded-lg flex items-center justify-center">
-                        <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <div className="w-8 h-8 bg-green-100 rounded-xl flex items-center justify-center">
+                        <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064"></path>
                         </svg>
                       </div>
-                      <h3 className="font-medium text-green-800">Farmer Details</h3>
+                      <h3 className="font-semibold text-green-800">Farmer Information</h3>
                     </div>
                     
                     <div className="space-y-1">
                       <label htmlFor="farmName" className="block text-sm font-medium text-gray-700">
-                        Farm Name (Optional)
+                        Farm Name
                       </label>
                       <input
                         id="farmName"
@@ -313,8 +322,8 @@ export default function RegisterPage() {
                         type="text"
                         value={formData.farmName}
                         onChange={handleChange}
-                        className="block w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent focus:outline-none transition-all duration-200"
-                        placeholder="Your farm name"
+                        className="block w-full px-4 py-3.5 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-green-500/10 focus:border-green-500 focus:outline-none transition-all duration-200 bg-white/70 hover:bg-white"
+                        placeholder="Your farm name (optional)"
                         disabled={loading}
                       />
                     </div>
@@ -331,8 +340,8 @@ export default function RegisterPage() {
                           required
                           value={formData.region}
                           onChange={handleChange}
-                          className="block w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent focus:outline-none transition-all duration-200"
-                          placeholder="Coffee growing region"
+                          className="block w-full px-4 py-3.5 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-green-500/10 focus:border-green-500 focus:outline-none transition-all duration-200 bg-white/70 hover:bg-white"
+                          placeholder="Growing region"
                           disabled={loading}
                         />
                       </div>
@@ -348,8 +357,8 @@ export default function RegisterPage() {
                           required
                           value={formData.residence}
                           onChange={handleChange}
-                          className="block w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent focus:outline-none transition-all duration-200"
-                          placeholder="Your current residence"
+                          className="block w-full px-4 py-3.5 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-green-500/10 focus:border-green-500 focus:outline-none transition-all duration-200 bg-white/70 hover:bg-white"
+                          placeholder="Current residence"
                           disabled={loading}
                         />
                       </div>
@@ -358,19 +367,19 @@ export default function RegisterPage() {
                 )}
 
                 {formData.role === 'buyer' && (
-                  <div className="space-y-4 p-4 bg-blue-50/50 border border-blue-100 rounded-xl">
+                  <div className="space-y-4 p-5 bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200/50 rounded-2xl">
                     <div className="flex items-center space-x-2">
-                      <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
-                        <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <div className="w-8 h-8 bg-blue-100 rounded-xl flex items-center justify-center">
+                        <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
                         </svg>
                       </div>
-                      <h3 className="font-medium text-blue-800">Business Details</h3>
+                      <h3 className="font-semibold text-blue-800">Business Information</h3>
                     </div>
                     
                     <div className="space-y-1">
                       <label htmlFor="companyName" className="block text-sm font-medium text-gray-700">
-                        Company Name (Optional)
+                        Company Name
                       </label>
                       <input
                         id="companyName"
@@ -378,8 +387,8 @@ export default function RegisterPage() {
                         type="text"
                         value={formData.companyName}
                         onChange={handleChange}
-                        className="block w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:outline-none transition-all duration-200"
-                        placeholder="Your company name"
+                        className="block w-full px-4 py-3.5 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 focus:outline-none transition-all duration-200 bg-white/70 hover:bg-white"
+                        placeholder="Company name (optional)"
                         disabled={loading}
                       />
                     </div>
@@ -393,7 +402,7 @@ export default function RegisterPage() {
                         name="businessType"
                         value={formData.businessType}
                         onChange={handleChange}
-                        className="block w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:outline-none transition-all duration-200 bg-white"
+                        className="block w-full px-4 py-3.5 border-2 border-gray-200 rounded-2xl focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 focus:outline-none transition-all duration-200 bg-white/70 hover:bg-white"
                         disabled={loading}
                       >
                         <option value="">Select business type</option>
@@ -412,7 +421,7 @@ export default function RegisterPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full py-3.5 px-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-medium rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:transform-none flex items-center justify-center"
+                  className="w-full py-4 px-4 bg-gradient-to-r from-emerald-500 via-green-500 to-emerald-600 hover:from-emerald-600 hover:via-green-600 hover:to-emerald-700 text-white font-semibold rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:transform-none disabled:hover:shadow-xl flex items-center justify-center group"
                 >
                   {loading ? (
                     <>
@@ -425,7 +434,7 @@ export default function RegisterPage() {
                   ) : (
                     <>
                       Create Account
-                      <svg className="ml-2 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <svg className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path>
                       </svg>
                     </>
@@ -433,11 +442,11 @@ export default function RegisterPage() {
                 </button>
               </form>
 
-              <div className="mt-8 pt-6 border-t border-gray-100">
-                <p className="text-center text-gray-600 text-sm">
+              <div className="mt-8 pt-6 border-t border-gray-200/50">
+                <p className="text-center text-gray-600">
                   Already have an account?{" "}
-                  <a href="/login" className="font-medium text-amber-600 hover:text-amber-500 transition-colors duration-200">
-                    Sign in here
+                  <a href="/login" className="font-semibold text-transparent bg-gradient-to-r from-amber-600 to-orange-600 bg-clip-text hover:from-amber-700 hover:to-orange-700 transition-all duration-200">
+                    Sign in here →
                   </a>
                 </p>
               </div>
@@ -517,19 +526,19 @@ export default function RegisterPage() {
 
         {/* Footer */}
         <div className="mt-8 text-center">
-          <p className="text-gray-500 text-sm">
+          <p className="text-gray-500">
             © {new Date().getFullYear()} Darcho - Coffee Marketplace. All rights reserved.
           </p>
-          <div className="mt-4 flex items-center justify-center space-x-4">
-            <a href="/privacy" className="text-gray-500 hover:text-gray-700 text-sm transition-colors duration-200">
+          <div className="mt-4 flex flex-wrap items-center justify-center space-x-4">
+            <a href="/privacy" className="text-gray-500 hover:text-gray-700 transition-colors duration-200">
               Privacy Policy
             </a>
             <span className="text-gray-300">•</span>
-            <a href="/terms" className="text-gray-500 hover:text-gray-700 text-sm transition-colors duration-200">
+            <a href="/terms" className="text-gray-500 hover:text-gray-700 transition-colors duration-200">
               Terms of Service
             </a>
             <span className="text-gray-300">•</span>
-            <a href="/contact" className="text-gray-500 hover:text-gray-700 text-sm transition-colors duration-200">
+            <a href="/contact" className="text-gray-500 hover:text-gray-700 transition-colors duration-200">
               Contact
             </a>
           </div>
