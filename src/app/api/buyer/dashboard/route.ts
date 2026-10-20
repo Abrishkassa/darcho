@@ -71,15 +71,34 @@ export async function GET(request: NextRequest) {
       .gt('quantity', 0)
       .limit(6);
 
+    // Cart, favorites and active chats (real counts)
+    const { count: cartItems } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('buyer_id', buyerId)
+      .eq('status', 'cart');
+
+    const { count: favorites } = await supabase
+      .from('orders')
+      .select('*', { count: 'exact', head: true })
+      .eq('buyer_id', buyerId)
+      .eq('status', 'favorite');
+
+    const { count: activeChats } = await supabase
+      .from('messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('receiver_id', user.id)
+      .eq('is_read', false);
+
     return NextResponse.json({
       success: true,
       data: {
         stats: {
           totalOrders: totalOrders || 0,
           totalSpent,
-          cartItems: 0,
-          favorites: 0,
-          activeChats: 0,
+          cartItems: cartItems || 0,
+          favorites: favorites || 0,
+          activeChats: activeChats || 0,
         },
         recentOrders: recentOrders || [],
         recommendedProducts: recommendedProducts || [],

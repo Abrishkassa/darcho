@@ -1,201 +1,190 @@
 "use client";
-import { useSession } from "next-auth/react";
-import { useState, useEffect, useRef } from "react";
+
+import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { supabase } from "@/app/lib/supabase";
-
-import { 
-  Home, 
-  Package, 
-  ShoppingCart, 
-  Truck, 
-  User, 
-  Heart, 
-  MessageCircle,
-  Bell,
+import {
+  Package,
   Search,
+  ShoppingCart,
+  Heart,
   Coffee,
-  TrendingUp,
-  TrendingDown,
-  CheckCircle,
-  Clock,
-  Star,
-  Filter,
-  Zap,
-  BarChart3,
-  DollarSign,
-  Users as UsersIcon,
-  Award,
-  ChevronRight,
-  Sparkles,
-  Shield,
-  Globe,
   MapPin,
-  Phone,
-  Mail,
-  Settings,
-  LogOut,
-  Sun,
-  Moon,
-  Eye,
-  MessageSquare,
-  ChevronLeft,
-  Menu,
+  User,
+  CheckCircle,
+  Loader2,
   X,
-  Plus,
-  MoreVertical,
-  Download,
-  Calendar,
-  Target,
-  Check
 } from "lucide-react";
-import Link from "next/link";
+import { useBuyerTheme } from "./theme-context";
 
-export default function BuyerDashboardPage() {
-  const [activeTab, setActiveTab] = useState<"overview" | "products" | "analytics" | "settings">("overview");
-  const [notifications, setNotifications] = useState<any[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [notifPanelOpen, setNotifPanelOpen] = useState(false);
-  const [notifUserId, setNotifUserId] = useState<number | null>(null);
-  const notifPanelRef = useRef<HTMLDivElement>(null);
-  const [darkMode, setDarkMode] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+interface FarmerInfo {
+  id?: number;
+  farm_name?: string;
+  region?: string;
+  avg_rating?: number;
+  users?: { full_name?: string; phone?: string } | { full_name?: string; phone?: string }[];
+}
+
+interface Product {
+  id: number;
+  name: string;
+  grade: string;
+  category: string;
+  quantity: number;
+  unit: string;
+  price_per_unit: number;
+  description: string | null;
+  origin_region: string;
+  certifications: string[];
+  image_urls: string[];
+  status: string;
+  farmers?: FarmerInfo;
+}
+
+const CATEGORIES = ["all", "arabica", "robusta", "specialty", "organic"];
+
+/** Supabase embeds can come back as object or single-element array; normalize. */
+function unwrap<T>(value: T | T[] | null | undefined): T | null {
+  if (value == null) return null;
+  return Array.isArray(value) ? (value[0] ?? null) : value;
+}
+
+function farmerOf(product: Product): FarmerInfo | null {
+  return unwrap(product.farmers);
+}
+
+function farmerName(product: Product): string {
+  const farmer = farmerOf(product);
+  const user = unwrap(farmer?.users);
+  return user?.full_name || farmer?.farm_name || "Unknown farmer";
+}
+
+export default function BuyerProductsPage() {
+  const { dark } = useBuyerTheme();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [favoriteIds, setFavoriteIds] = useState<Set<number>>(new Set());
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [cartItems, setCartItems] = useState(3);
-  const [favorites, setFavorites] = useState([1, 3]);
-  const [realProducts, setRealProducts] = useState<any[]>([]);
-  const [productsLoading, setProductsLoading] = useState(false);
-  const [showOrderModal, setShowOrderModal] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<any>(null);
+  const [category, setCategory] = useState("all");
+  const [addingToCart, setAddingToCart] = useState<number | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  // Order modal
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [orderForm, setOrderForm] = useState({
-    quantity: '',
-    deliveryDate: '',
-    deliveryLocation: '',
-    paymentMethod: 'bank_transfer',
-    notes: '',
+    quantity: "",
+    deliveryDate: "",
+    deliveryLocation: "",
+    paymentMethod: "bank_transfer",
+    notes: "",
   });
   const [orderSubmitting, setOrderSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState(false);
 
-  const { data: session } = useSession();
-  const userName = session?.user?.name || "Guest";
-
-  const fetchNotifications = async () => {
-    try {
-      const res = await fetch("/api/notifications");
-      const data = await res.json();
-      if (data.success) {
-        setNotifications(data.notifications || []);
-        setUnreadCount(data.unreadCount || 0);
-        if (typeof data.userId === "number") setNotifUserId(data.userId);
-      }
-    } catch (err) {
-      console.error("Failed to load notifications:", err);
-    }
+  const showToast = (message: string, type: "success" | "error" = "success") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
   };
 
   useEffect(() => {
-    if (session) {
-      fetchNotifications();
-    }
-  }, [session]);
-
-  useEffect(() => {
-    if (!notifUserId) return;
-
-    const channel = supabase
-      .channel(`buyer-notifications-${notifUserId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${notifUserId}`,
-        },
-        (payload) => {
-          setNotifications((prev) => [payload.new, ...prev].slice(0, 20));
-          setUnreadCount((prev) => prev + 1);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [notifUserId]);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (notifPanelRef.current && !notifPanelRef.current.contains(event.target as Node)) {
-        setNotifPanelOpen(false);
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await fetch("/api/buyer/products?limit=60");
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || "Failed to load products");
+        setProducts(data.data || []);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load products");
+      } finally {
+        setLoading(false);
       }
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    load();
   }, []);
 
-  const markNotifAsRead = async (notificationId: number) => {
-    setNotifications((prev) => prev.map((n) => (n.id === notificationId ? { ...n, is_read: true } : n)));
-    setUnreadCount((prev) => Math.max(0, prev - 1));
-    try {
-      await fetch("/api/notifications", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notificationId }),
-      });
-    } catch (err) {
-      console.error("Failed to mark notification as read:", err);
-    }
-  };
-
-  const markAllNotifsAsRead = async () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-    setUnreadCount(0);
-    try {
-      await fetch("/api/notifications", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ markAllRead: true }),
-      });
-    } catch (err) {
-      console.error("Failed to mark all notifications as read:", err);
-    }
-  };
-
-  const notifTimeAgo = (dateString: string) => {
-    const seconds = Math.floor((Date.now() - new Date(dateString).getTime()) / 1000);
-    if (seconds < 60) return "just now";
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    return `${Math.floor(hours / 24)}d ago`;
-  };
-
+  // Load favorites so the heart reflects reality
   useEffect(() => {
-    if (activeTab === 'products') {
-      setProductsLoading(true);
-      fetch('/api/buyer/products')
-        .then(res => res.json())
-        .then(data => {
-          if (data.success) setRealProducts(data.data);
-        })
-        .finally(() => setProductsLoading(false));
+    fetch("/api/buyer/favorites?limit=100")
+      .then((res) => (res.ok ? res.json() : { success: false }))
+      .then((data) => {
+        if (data.success) {
+          setFavoriteIds(new Set((data.data || []).map((row: { productId: number }) => row.productId)));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const filteredProducts = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return products.filter((p) => {
+      const matchesSearch =
+        !q ||
+        p.name.toLowerCase().includes(q) ||
+        p.origin_region.toLowerCase().includes(q) ||
+        farmerName(p).toLowerCase().includes(q);
+      const matchesCategory = category === "all" || p.category?.toLowerCase() === category;
+      return matchesSearch && matchesCategory;
+    });
+  }, [products, searchQuery, category]);
+
+  const toggleFavorite = async (product: Product) => {
+    const isFavorite = favoriteIds.has(product.id);
+    // Optimistic update
+    setFavoriteIds((prev) => {
+      const next = new Set(prev);
+      if (isFavorite) next.delete(product.id);
+      else next.add(product.id);
+      return next;
+    });
+    try {
+      const res = await fetch(`/api/buyer/favorites/${product.id}`, {
+        method: isFavorite ? "DELETE" : "POST",
+      });
+      if (!res.ok) throw new Error();
+      showToast(isFavorite ? "Removed from favorites" : "Added to favorites");
+    } catch {
+      // Revert on failure
+      setFavoriteIds((prev) => {
+        const next = new Set(prev);
+        if (isFavorite) next.add(product.id);
+        else next.delete(product.id);
+        return next;
+      });
+      showToast("Could not update favorites", "error");
     }
-  }, [activeTab]);
+  };
+
+  const addToCart = async (product: Product) => {
+    setAddingToCart(product.id);
+    try {
+      const res = await fetch("/api/buyer/cart", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId: product.id, quantity: 1 }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error);
+      showToast("Added to cart");
+      window.dispatchEvent(new Event("cart:updated"));
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to add to cart", "error");
+    } finally {
+      setAddingToCart(null);
+    }
+  };
 
   const handleOrder = async () => {
     if (!selectedProduct) return;
     setOrderSubmitting(true);
     try {
-      const res = await fetch('/api/buyer/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/buyer/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           productId: selectedProduct.id,
-          farmerId: selectedProduct.farmer_id,
+          farmerId: unwrap(selectedProduct.farmers)?.id,
           quantity: parseFloat(orderForm.quantity),
           unitPrice: selectedProduct.price_per_unit,
           totalPrice: parseFloat(orderForm.quantity) * selectedProduct.price_per_unit,
@@ -206,731 +195,389 @@ export default function BuyerDashboardPage() {
         }),
       });
       const data = await res.json();
-      if (data.success) {
-        setOrderSuccess(true);
-        setTimeout(() => {
-          setShowOrderModal(false);
-          setOrderSuccess(false);
-          setOrderForm({ quantity: '', deliveryDate: '', deliveryLocation: '', paymentMethod: 'bank_transfer', notes: '' });
-        }, 2000);
-      } else {
-        alert('Error: ' + data.error);
-      }
+      if (!res.ok || !data.success) throw new Error(data.error || "Failed to place order");
+      setOrderSuccess(true);
+      setTimeout(() => {
+        setSelectedProduct(null);
+        setOrderSuccess(false);
+        setOrderForm({ quantity: "", deliveryDate: "", deliveryLocation: "", paymentMethod: "bank_transfer", notes: "" });
+      }, 2000);
     } catch (err) {
-      alert('Failed to place order');
-    }
-    setOrderSubmitting(false);
-  };
-
-  const stats = [
-    { label: "Total Orders", value: "24", change: "+12%", trend: "up", icon: Package, color: "blue" },
-    { label: "Cart Value", value: "₮ 49.6K", change: "+8%", trend: "up", icon: ShoppingCart, color: "amber" },
-    { label: "Favorites", value: "12", change: "+3", trend: "up", icon: Heart, color: "pink" },
-    { label: "Active Chats", value: "4", change: "+1", trend: "up", icon: MessageCircle, color: "green" },
-    { label: "Monthly Spend", value: "₮ 186K", change: "+15%", trend: "up", icon: DollarSign, color: "purple" },
-    { label: "Avg Order Value", value: "₮ 7.7K", change: "+5%", trend: "up", icon: BarChart3, color: "emerald" },
-  ];
-
-  const recentOrders = [
-    { id: "ORD-2024-015", product: "Yirgacheffe AA", farmer: "Abriham Kassa", status: "delivered", amount: "₮ 28,000", date: "2 days ago", rating: 5 },
-    { id: "ORD-2024-014", product: "Sidamo Natural", farmer: "Demo User", status: "shipped", amount: "₮ 12,000", date: "3 days ago", rating: 4 },
-    { id: "ORD-2024-013", product: "Harar Longberry", farmer: "Mikael Assefa", status: "processing", amount: "₮ 9,600", date: "5 days ago", rating: null },
-    { id: "ORD-2024-012", product: "Limu Washed", farmer: "Helen Tesfaye", status: "delivered", amount: "₮ 15,600", date: "1 week ago", rating: 5 },
-    { id: "ORD-2024-011", product: "Guij Coffee AA", farmer: "Daniel Solomon", status: "delivered", amount: "₮ 32,000", date: "1 week ago", rating: 4 },
-  ];
-
-  const recommendedProducts = [
-    { id: 1, name: "Kochere Natural", farmer: "Ruth Bekele", price: "₮ 3,000/kg", rating: 4.9, stock: "Limited", origin: "Kochere, Ethiopia" },
-    { id: 2, name: "Wollega Organic", farmer: "Samuel Teklu", price: "₮ 2,700/kg", rating: 4.3, stock: "High", origin: "Wollega, Ethiopia" },
-    { id: 3, name: "Jimma Grade A", farmer: "Martha Alemu", price: "₮ 2,500/kg", rating: 4.2, stock: "Medium", origin: "Jimma, Ethiopia" },
-    { id: 4, name: "Bench Maji", farmer: "Solomon Worku", price: "₮ 3,100/kg", rating: 4.7, stock: "Low", origin: "Bench Maji, Ethiopia" },
-  ];
-
-  const topFarmers = [
-    { id: 1, name: "Abriham Kassa", region: "Yirgacheffe", rating: 4.9, orders: 24, response: "< 2h" },
-    { id: 2, name: "Demo User", region: "Sidamo", rating: 4.8, orders: 18, response: "< 4h" },
-    { id: 3, name: "Mikael Assefa", region: "Harar", rating: 4.7, orders: 15, response: "< 6h" },
-    { id: 4, name: "Helen Tesfaye", region: "Limu", rating: 4.6, orders: 12, response: "< 3h" },
-  ];
-
-  const tabs = [
-    { id: "overview", label: "Overview", icon: Home },
-    { id: "products", label: "Products", icon: Package },
-    { id: "analytics", label: "Analytics", icon: BarChart3 },
-    { id: "settings", label: "Settings", icon: Settings },
-  ];
-
-  const sidebarTabs = [
-    { id: "dashboard", label: "Dashboard", icon: Home, href: "/buyer/dashboard" },
-    { id: "products", label: "Browse Products", icon: Package, href: "/buyer" },
-    { id: "cart", label: "Shopping Cart", icon: ShoppingCart, href: "/buyer/cart" },
-    { id: "orders", label: "My Orders", icon: Truck, href: "/buyer/orders" },
-    { id: "profile", label: "Profile", icon: User, href: "/buyer/profile" },
-    { id: "favorites", label: "Favorites", icon: Heart, href: "/buyer/favorites" },
-    { id: "chats", label: "Chats", icon: MessageCircle, href: "/buyer/chats" },
-  ];
-
-  const themeClass = darkMode 
-    ? "bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-gray-100" 
-    : "bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 text-gray-900";
-
-  const renderContent = () => {
-    switch (activeTab) {
-      case "overview":
-        return (
-          <div className="space-y-6">
-            <div className="rounded-3xl overflow-hidden bg-gradient-to-r from-amber-600 via-orange-500 to-amber-600 p-8 text-white relative">
-              <div className="absolute inset-0 bg-black/20" />
-              <div className="relative z-10">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="flex items-center gap-3 mb-4">
-                      <Sparkles className="w-6 h-6" />
-                      <span className="text-amber-100 font-semibold">Welcome back!</span>
-                    </div>
-                    <h1 className="text-3xl font-bold mb-3">Hello, {userName} 👋</h1>
-                    <p className="text-amber-100 max-w-2xl">
-                      Your coffee trading dashboard is updated with the latest market insights and recommendations.
-                    </p>
-                  </div>
-                  <div className="hidden md:block">
-                    <button className="px-6 py-3 rounded-xl bg-white/20 backdrop-blur-sm hover:bg-white/30 transition-colors flex items-center gap-2">
-                      <Calendar className="w-5 h-5" />
-                      View Schedule
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {stats.map((stat, index) => (
-                <motion.div
-                  key={stat.label}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                  className={`p-6 rounded-2xl backdrop-blur-sm border ${darkMode ? "bg-gray-800/50 border-gray-700" : "bg-white border-gray-200"} shadow-lg hover:shadow-xl transition-all duration-300`}
-                >
-                  <div className="flex items-center justify-between mb-4">
-                    <div className={`p-3 rounded-xl ${darkMode ? `bg-${stat.color}-900/30` : `bg-${stat.color}-100`}`}>
-                      <stat.icon className={`w-6 h-6 ${darkMode ? `text-${stat.color}-400` : `text-${stat.color}-600`}`} />
-                    </div>
-                    <div className={`flex items-center gap-1 text-sm ${stat.trend === "up" ? "text-emerald-500" : "text-red-500"}`}>
-                      {stat.trend === "up" ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                      {stat.change}
-                    </div>
-                  </div>
-                  <div className="text-2xl font-bold mb-1">{stat.value}</div>
-                  <div className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>{stat.label}</div>
-                </motion.div>
-              ))}
-            </div>
-
-            <div className="grid lg:grid-cols-3 gap-6">
-              <div className={`lg:col-span-2 p-6 rounded-2xl backdrop-blur-sm border ${darkMode ? "bg-gray-800/50 border-gray-700" : "bg-white border-gray-200"} shadow-lg`}>
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className={`text-lg font-semibold ${darkMode ? "text-white" : "text-gray-900"}`}>Recent Orders</h3>
-                  <Link href="/buyer/orders" className={`text-sm hover:underline flex items-center gap-1 ${darkMode ? "text-amber-400" : "text-amber-600"}`}>
-                    View All <ChevronRight className="w-4 h-4" />
-                  </Link>
-                </div>
-                <div className="space-y-4">
-                  {recentOrders.map(order => (
-                    <div key={order.id} className={`flex items-center justify-between p-4 rounded-xl border ${darkMode ? "border-gray-700 hover:bg-gray-800/50" : "border-gray-200 hover:bg-gray-50"} transition-colors`}>
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
-                          <Coffee className="w-6 h-6 text-white" />
-                        </div>
-                        <div>
-                          <div className={`font-medium ${darkMode ? "text-white" : "text-gray-900"}`}>{order.product}</div>
-                          <div className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>Farmer: {order.farmer} • {order.date}</div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-semibold text-amber-500">{order.amount}</div>
-                        <div className="flex items-center gap-2 mt-2">
-                          <div className={`text-sm px-2 py-1 rounded-full inline-block ${order.status === "delivered" ? darkMode ? "bg-emerald-900/30 text-emerald-400" : "bg-emerald-100 text-emerald-700" : order.status === "shipped" ? darkMode ? "bg-blue-900/30 text-blue-400" : "bg-blue-100 text-blue-700" : darkMode ? "bg-amber-900/30 text-amber-400" : "bg-amber-100 text-amber-700"}`}>
-                            {order.status}
-                          </div>
-                          {order.rating && (
-                            <div className="flex items-center gap-1">
-                              <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
-                              <span className="text-sm">{order.rating}</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className={`p-6 rounded-2xl backdrop-blur-sm border ${darkMode ? "bg-gray-800/50 border-gray-700" : "bg-white border-gray-200"} shadow-lg`}>
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className={`text-lg font-semibold ${darkMode ? "text-white" : "text-gray-900"}`}>Recommended For You</h3>
-                  <Link href="/buyer" className={`text-sm hover:underline flex items-center gap-1 ${darkMode ? "text-amber-400" : "text-amber-600"}`}>
-                    Browse All <ChevronRight className="w-4 h-4" />
-                  </Link>
-                </div>
-                <div className="space-y-4">
-                  {recommendedProducts.map(product => (
-                    <div key={product.id} className={`flex items-center gap-4 p-4 rounded-xl border ${darkMode ? "border-gray-700 hover:bg-gray-800/50" : "border-gray-200 hover:bg-gray-50"} transition-colors`}>
-                      <div className="w-16 h-16 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
-                        <Coffee className="w-8 h-8 text-white" />
-                      </div>
-                      <div className="flex-1">
-                        <div className={`font-medium ${darkMode ? "text-white" : "text-gray-900"}`}>{product.name}</div>
-                        <div className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>{product.origin}</div>
-                        <div className="flex items-center gap-4 mt-2">
-                          <div className="flex items-center gap-1">
-                            <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
-                            <span className="text-sm">{product.rating}</span>
-                          </div>
-                          <div className={`text-sm px-2 py-0.5 rounded-full ${product.stock === "Low" ? darkMode ? "bg-red-900/30 text-red-400" : "bg-red-100 text-red-700" : product.stock === "Limited" ? darkMode ? "bg-amber-900/30 text-amber-400" : "bg-amber-100 text-amber-700" : darkMode ? "bg-green-900/30 text-green-400" : "bg-green-100 text-green-700"}`}>
-                            {product.stock} Stock
-                          </div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-semibold text-amber-500">{product.price}</div>
-                        <button className="mt-2 px-3 py-1.5 text-sm rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition-colors">
-                          Add to Cart
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="grid lg:grid-cols-3 gap-6">
-              <div className={`p-6 rounded-2xl backdrop-blur-sm border ${darkMode ? "bg-gray-800/50 border-gray-700" : "bg-white border-gray-200"} shadow-lg`}>
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className={`text-lg font-semibold ${darkMode ? "text-white" : "text-gray-900"}`}>Top Farmers</h3>
-                  <button className={`text-sm hover:underline flex items-center gap-1 ${darkMode ? "text-amber-400" : "text-amber-600"}`}>
-                    View All <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="space-y-4">
-                  {topFarmers.map(farmer => (
-                    <div key={farmer.id} className={`flex items-center gap-4 p-4 rounded-xl border ${darkMode ? "border-gray-700 hover:bg-gray-800/50" : "border-gray-200 hover:bg-gray-50"} transition-colors`}>
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
-                        <User className="w-6 h-6 text-white" />
-                      </div>
-                      <div className="flex-1">
-                        <div className={`font-medium ${darkMode ? "text-white" : "text-gray-900"}`}>{farmer.name}</div>
-                        <div className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>{farmer.region} • {farmer.response} response</div>
-                        <div className="flex items-center gap-4 mt-2">
-                          <div className="flex items-center gap-1">
-                            <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
-                            <span className="text-sm">{farmer.rating}</span>
-                          </div>
-                          <div className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>{farmer.orders} orders</div>
-                        </div>
-                      </div>
-                      <button className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                        <MessageSquare className="w-5 h-5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className={`p-6 rounded-2xl backdrop-blur-sm border ${darkMode ? "bg-gray-800/50 border-gray-700" : "bg-white border-gray-200"} shadow-lg`}>
-                <h3 className={`text-lg font-semibold mb-6 ${darkMode ? "text-white" : "text-gray-900"}`}>Quick Actions</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  {[
-                    { icon: Globe, label: "Browse Regions", color: "blue", href: "/buyer" },
-                    { icon: MapPin, label: "Track Order", color: "green", href: "/buyer/orders" },
-                    { icon: Phone, label: "Contact Support", color: "purple", href: "/buyer/chats" },
-                    { icon: Award, label: "View Ratings", color: "amber", href: "#" },
-                    { icon: Download, label: "Export Data", color: "cyan", href: "#" },
-                    { icon: Target, label: "Set Goals", color: "pink", href: "#" },
-                  ].map(action => (
-                    <Link key={action.label} href={action.href}
-                      className={`p-4 rounded-xl border hover:shadow-md transition-all flex flex-col items-center gap-3 ${darkMode ? "bg-gray-800/30 border-gray-700 hover:bg-gray-800/50" : "bg-gray-50 border-gray-200 hover:bg-white"}`}
-                    >
-                      <div className={`p-3 rounded-lg ${darkMode ? `bg-${action.color}-900/30` : `bg-${action.color}-100`}`}></div>
-                      <span className={`font-medium text-sm text-center ${darkMode ? "text-gray-300" : "text-gray-700"}`}>{action.label}</span>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-
-              <div className={`p-6 rounded-2xl backdrop-blur-sm border ${darkMode ? "bg-gray-800/50 border-gray-700" : "bg-white border-gray-200"} shadow-lg`}>
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className={`text-lg font-semibold ${darkMode ? "text-white" : "text-gray-900"}`}>Market Insights</h3>
-                  <span className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>Last 7 days</span>
-                </div>
-                <div className="space-y-4">
-                  {[
-                    { label: "Yirgacheffe AA", change: "+8.2%", price: "₮ 2,850", trend: "up" },
-                    { label: "Sidamo Natural", change: "+5.7%", price: "₮ 2,450", trend: "up" },
-                    { label: "Harar Longberry", change: "-2.1%", price: "₮ 3,150", trend: "down" },
-                    { label: "Limu Washed", change: "+3.4%", price: "₮ 2,650", trend: "up" },
-                  ].map(insight => (
-                    <div key={insight.label} className="flex items-center justify-between">
-                      <div>
-                        <div className={`font-medium ${darkMode ? "text-white" : "text-gray-900"}`}>{insight.label}</div>
-                        <div className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>Current: {insight.price}/kg</div>
-                      </div>
-                      <div className={`flex items-center gap-1 ${insight.trend === "up" ? "text-emerald-500" : "text-red-500"}`}>
-                        {insight.trend === "up" ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                        <span className="font-medium">{insight.change}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className={`mt-6 pt-6 border-t ${darkMode ? "border-gray-700" : "border-gray-200"}`}>
-                  <button className={`w-full py-3 rounded-lg border-2 border-dashed text-center transition-colors ${darkMode ? "border-gray-600 text-gray-400 hover:border-amber-500 hover:text-amber-400" : "border-gray-300 text-gray-600 hover:border-amber-500 hover:text-amber-600"}`}>
-                    <Plus className="w-5 h-5 inline-block mr-2" />
-                    Add Price Alert
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-
-      case "products":
-        return (
-          <div className="space-y-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className={`text-2xl font-bold ${darkMode ? "text-white" : "text-gray-900"}`}>Browse Coffee Products</h2>
-                <p className={`mt-1 ${darkMode ? "text-gray-400" : "text-gray-600"}`}>Direct from Ethiopian farmers</p>
-              </div>
-              <div className="relative w-full sm:w-auto">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input type="text" placeholder="Search products..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className={`w-full pl-10 pr-4 py-2 rounded-lg border ${darkMode ? "bg-gray-800 border-gray-700 text-white" : "bg-white border-gray-300"} focus:outline-none focus:ring-2 focus:ring-amber-500`}
-                />
-              </div>
-            </div>
-
-            {productsLoading ? (
-              <div className="text-center py-12">
-                <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p className={darkMode ? "text-gray-400" : "text-gray-600"}>Loading products...</p>
-              </div>
-            ) : realProducts.length === 0 ? (
-              <div className="text-center py-12">
-                <Package className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-                <p className={darkMode ? "text-gray-400" : "text-gray-600"}>No products available yet</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-                {realProducts
-                  .filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
-                  .map((product) => (
-                  <div key={product.id} className={`rounded-2xl border overflow-hidden ${darkMode ? "bg-gray-800/50 border-gray-700" : "bg-white border-gray-200"} shadow-lg hover:shadow-xl transition-all duration-300`}>
-                    <div className="h-40 bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
-                      <Coffee className="w-16 h-16 text-white opacity-80" />
-                    </div>
-                    <div className="p-5">
-                      <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
-                        <h3 className={`font-bold text-lg ${darkMode ? "text-white" : "text-gray-900"}`}>{product.name}</h3>
-                        <span className={`px-2 py-1 rounded-full text-xs ${darkMode ? "bg-amber-900/30 text-amber-400" : "bg-amber-100 text-amber-700"}`}>{product.grade} Grade</span>
-                      </div>
-                      <p className={`text-sm mb-3 ${darkMode ? "text-gray-400" : "text-gray-600"}`}>{product.description}</p>
-                      <div className={`flex items-center gap-2 text-sm mb-3 ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
-                        <MapPin className="w-4 h-4" />
-                        {product.origin_region}
-                      </div>
-                      <div className={`flex items-center gap-2 text-sm mb-4 ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
-                        <User className="w-4 h-4" />
-                        {product.farmers?.users?.full_name} • {product.farmers?.farm_name}
-                      </div>
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <div className="text-xl font-bold text-amber-500">ETB {product.price_per_unit}/kg</div>
-                          <div className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>{product.quantity} kg available</div>
-                        </div>
-                        <button
-                          onClick={() => { setSelectedProduct(product); setShowOrderModal(true); }}
-                          className="px-4 py-2 rounded-lg bg-gradient-to-r from-amber-600 to-orange-600 text-white hover:shadow-lg transition-all text-sm font-medium">
-                          Order Now
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-
-      case "analytics":
-        return (
-          <div className="space-y-6">
-            <div className={`p-6 rounded-2xl backdrop-blur-sm border ${darkMode ? "bg-gray-800/50 border-gray-700" : "bg-white/80 border-gray-200"} shadow-lg`}>
-              <h2 className={`text-2xl font-bold mb-6 ${darkMode ? "text-white" : "text-gray-900"}`}>Advanced Analytics</h2>
-              <div className="text-center py-12">
-                <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
-                  <BarChart3 className="w-10 h-10 text-white" />
-                </div>
-                <h3 className={`text-2xl font-bold mb-2 ${darkMode ? "text-white" : "text-gray-900"}`}>Coming Soon</h3>
-                <p className={darkMode ? "text-gray-400" : "text-gray-600"}>Advanced analytics features will be available soon</p>
-              </div>
-            </div>
-          </div>
-        );
-
-      case "settings":
-        return (
-          <div className="space-y-6">
-            <div className={`p-6 rounded-2xl backdrop-blur-sm border ${darkMode ? "bg-gray-800/50 border-gray-700" : "bg-white/80 border-gray-200"} shadow-lg`}>
-              <h2 className={`text-2xl font-bold mb-6 ${darkMode ? "text-white" : "text-gray-900"}`}>Dashboard Settings</h2>
-              <div className="text-center py-12">
-                <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
-                  <Settings className="w-10 h-10 text-white" />
-                </div>
-                <h3 className={`text-2xl font-bold mb-2 ${darkMode ? "text-white" : "text-gray-900"}`}>Coming Soon</h3>
-                <p className={darkMode ? "text-gray-400" : "text-gray-600"}>Settings panel will be available in the next update</p>
-              </div>
-            </div>
-          </div>
-        );
-
-      default:
-        return null;
+      showToast(err instanceof Error ? err.message : "Failed to place order", "error");
+    } finally {
+      setOrderSubmitting(false);
     }
   };
+
+  const cardBorder = dark ? "border-gray-700 bg-gray-800/60" : "border-gray-200 bg-white";
+  const mutedText = dark ? "text-gray-400" : "text-gray-600";
+  const headingText = dark ? "text-white" : "text-gray-900";
+  const inputClass = `w-full px-4 py-2.5 rounded-lg border ${
+    dark ? "bg-gray-800 border-gray-700 text-white" : "bg-white border-gray-300"
+  } focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500`;
 
   return (
-    <div className={`min-h-screen transition-colors duration-500 ${themeClass}`}>
-      <nav className={`sticky top-0 z-40 backdrop-blur-xl border-b ${darkMode ? "bg-gray-900/80 border-gray-800" : "bg-white/80 border-gray-200"}`}>
-        <div className="px-4 md:px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 sm:gap-4">
-              <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className={`md:hidden p-2 rounded-lg ${darkMode ? "hover:bg-gray-800 text-gray-300" : "hover:bg-gray-100 text-gray-600"} transition-colors`}>
-                {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-              </button>
-              <button onClick={() => setSidebarOpen(!sidebarOpen)}
-                className={`hidden md:block p-2 rounded-lg ${darkMode ? "hover:bg-gray-800 text-gray-300" : "hover:bg-gray-100 text-gray-600"} transition-colors`}>
-                {sidebarOpen ? <ChevronLeft className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
-              </button>
-              <div className="flex items-center gap-3">
-                <Coffee className="w-6 h-6 text-amber-600" />
-                <div className="hidden sm:block">
-                  <h1 className="text-xl font-bold">Buyer Dashboard</h1>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Direct trade with Ethiopian farmers</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 sm:gap-4">
-              <button onClick={() => setDarkMode(!darkMode)}
-                className={`p-2 rounded-lg transition-colors ${darkMode ? "bg-gray-800 text-amber-400 hover:bg-gray-700" : "bg-white text-amber-600 hover:bg-amber-50 border border-gray-200"}`}>
-                {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-              </button>
-              <div className="hidden md:block relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input type="text" placeholder="Search products, farmers..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className={`pl-10 pr-4 py-2 rounded-lg border ${darkMode ? "bg-gray-800 border-gray-700 text-white" : "bg-white border-gray-300"} focus:outline-none focus:ring-2 focus:ring-amber-500`}
-                />
-              </div>
-              <div className="relative" ref={notifPanelRef}>
-                <button
-                  onClick={() => setNotifPanelOpen((prev) => !prev)}
-                  className="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                >
-                  <Bell className="w-5 h-5" />
-                  {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">{unreadCount}</span>
-                  )}
-                </button>
-                <AnimatePresence>
-                  {notifPanelOpen && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      className={`absolute right-0 mt-2 w-80 max-h-96 overflow-y-auto rounded-xl shadow-2xl border z-50 ${
-                        darkMode ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200"
-                      }`}
-                    >
-                      <div className={`flex items-center justify-between px-4 py-3 border-b ${darkMode ? "border-gray-800" : "border-gray-100"}`}>
-                        <span className="font-semibold">Notifications</span>
-                        {unreadCount > 0 && (
-                          <button onClick={markAllNotifsAsRead} className="text-xs text-amber-600 hover:text-amber-700 font-medium">
-                            Mark all read
-                          </button>
-                        )}
-                      </div>
-                      {notifications.length === 0 ? (
-                        <div className={`px-4 py-8 text-center text-sm ${darkMode ? "text-gray-500" : "text-gray-400"}`}>
-                          No notifications yet
-                        </div>
-                      ) : (
-                        notifications.map((n) => (
-                          <button
-                            key={n.id}
-                            onClick={() => !n.is_read && markNotifAsRead(n.id)}
-                            className={`w-full text-left px-4 py-3 border-b transition-colors ${
-                              darkMode ? "border-gray-800 hover:bg-gray-800/50" : "border-gray-50 hover:bg-amber-50"
-                            } ${!n.is_read ? (darkMode ? "bg-gray-800/30" : "bg-amber-50/50") : ""}`}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="font-medium text-sm">{n.title}</div>
-                              {!n.is_read && <span className="w-2 h-2 rounded-full bg-amber-500 mt-1.5 flex-shrink-0" />}
-                              {n.is_read && <Check className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 mt-0.5" />}
-                            </div>
-                            <div className={`text-xs mt-0.5 ${darkMode ? "text-gray-400" : "text-gray-600"}`}>{n.message}</div>
-                            <div className={`text-xs mt-1 ${darkMode ? "text-gray-500" : "text-gray-400"}`}>{notifTimeAgo(n.created_at)}</div>
-                          </button>
-                        ))
-                      )}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-              <Link href="/buyer/cart" className="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                <ShoppingCart className="w-5 h-5" />
-                {cartItems > 0 && (
-                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-amber-500 text-white text-xs rounded-full flex items-center justify-center">{cartItems}</span>
-                )}
-              </Link>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
-                  <User className="w-5 h-5 text-white" />
-                </div>
-                <div className="hidden md:block">
-                  <div className="font-medium">{userName}</div>
-                  <div className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-600"}`}>Premium Buyer</div>
-                </div>
-                <button className="hidden sm:block p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
-                  <MoreVertical className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {mobileMenuOpen && (
-            <div className="mt-4 md:hidden">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input type="text" placeholder="Search products, farmers..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className={`w-full pl-10 pr-4 py-2 rounded-lg border ${darkMode ? "bg-gray-800 border-gray-700 text-white" : "bg-white border-gray-300"} focus:outline-none focus:ring-2 focus:ring-amber-500`}
-                />
-              </div>
-            </div>
-          )}
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className={`text-2xl font-bold ${headingText}`}>Browse Coffee Products</h1>
+          <p className={`mt-1 ${mutedText}`}>Direct from Ethiopian farmers</p>
         </div>
-      </nav>
-
-      <div className="flex">
-        <motion.aside
-          animate={{ width: sidebarOpen ? 280 : 80 }}
-          className={`sticky top-16 h-[calc(100vh-4rem)] border-r hidden md:block ${darkMode ? "bg-gray-900/50 border-gray-800" : "bg-white/50 border-gray-200"} backdrop-blur-sm transition-all duration-300 overflow-hidden`}
-        >
-          <div className="p-4">
-            <div className="space-y-2">
-              {sidebarTabs.map(tab => {
-                const Icon = tab.icon;
-                const isActive = tab.href === "/buyer/dashboard";
-                return (
-                  <Link key={tab.id} href={tab.href}>
-                    <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 ${isActive ? darkMode ? "bg-gradient-to-r from-amber-900/30 to-orange-900/20 text-amber-400 border border-amber-800/30" : "bg-gradient-to-r from-amber-100 to-orange-50 text-amber-700 border border-amber-200" : darkMode ? "hover:bg-gray-800/50 text-gray-300" : "hover:bg-gray-100 text-gray-600"}`}>
-                      <Icon className="w-5 h-5 flex-shrink-0" />
-                      {sidebarOpen && (
-                        <motion.span initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="font-medium">
-                          {tab.label}
-                        </motion.span>
-                      )}
-                    </motion.div>
-                  </Link>
-                );
-              })}
-            </div>
-            {sidebarOpen && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-8 pt-6 border-t dark:border-gray-800">
-                <div className="space-y-2">
-                  <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                    <Settings className="w-5 h-5" />
-                    <span>Settings</span>
-                  </button>
-                  <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-red-500">
-                    <LogOut className="w-5 h-5" />
-                    <span>Logout</span>
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </div>
-        </motion.aside>
-
-        <AnimatePresence>
-          {mobileMenuOpen && (
-            <motion.div initial={{ opacity: 0, x: -300 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -300 }}
-              className={`fixed md:hidden inset-y-0 left-0 z-50 w-64 border-r ${darkMode ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200"}`}>
-              <div className="p-4">
-                <div className="space-y-2">
-                  {sidebarTabs.map(tab => {
-                    const Icon = tab.icon;
-                    const isActive = tab.href === "/buyer/dashboard";
-                    return (
-                      <Link key={tab.id} href={tab.href} onClick={() => setMobileMenuOpen(false)}>
-                        <div className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 ${isActive ? darkMode ? "bg-gradient-to-r from-amber-900/30 to-orange-900/20 text-amber-400 border border-amber-800/30" : "bg-gradient-to-r from-amber-100 to-orange-50 text-amber-700 border border-amber-200" : darkMode ? "hover:bg-gray-800 text-gray-300" : "hover:bg-gray-100 text-gray-600"}`}>
-                          <Icon className="w-5 h-5 flex-shrink-0" />
-                          <span className="font-medium">{tab.label}</span>
-                        </div>
-                      </Link>
-                    );
-                  })}
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <main className="flex-1 p-4 pb-24 md:p-6 md:pb-6">
-          <div className={`mb-6 p-4 rounded-2xl backdrop-blur-sm border ${darkMode ? "bg-gray-800/50 border-gray-700" : "bg-white/80 border-gray-200"} shadow-lg`}>
-            <div className="flex flex-wrap gap-2">
-              {tabs.map(tab => {
-                const Icon = tab.icon;
-                const isActive = activeTab === tab.id;
-                return (
-                  <motion.button key={tab.id} onClick={() => setActiveTab(tab.id as any)}
-                    whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                    className={`relative px-6 py-3 rounded-xl font-semibold transition-all duration-300 flex items-center gap-2 overflow-hidden group ${isActive ? "bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-lg shadow-amber-500/30" : darkMode ? "bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700" : "bg-white text-gray-700 hover:bg-gray-50 border border-gray-200"}`}>
-                    {isActive && (
-                      <motion.div layoutId="activeTab" className="absolute inset-0 bg-gradient-to-r from-amber-600 to-orange-600 -z-10" transition={{ type: "spring", duration: 0.6 }} />
-                    )}
-                    <div className={`transition-transform duration-300 ${isActive ? "text-white" : darkMode ? "text-gray-400 group-hover:text-amber-400" : "text-gray-600 group-hover:text-amber-600"}`}>
-                      <Icon className="w-4 h-4" />
-                    </div>
-                    <span className="relative">{tab.label}</span>
-                  </motion.button>
-                );
-              })}
-            </div>
-          </div>
-
-          <AnimatePresence mode="wait">
-            <motion.div key={activeTab} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} transition={{ duration: 0.3 }} className="space-y-6">
-              {renderContent()}
-            </motion.div>
-          </AnimatePresence>
-        </main>
+        <div className="relative w-full sm:w-80">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <input
+            type="search"
+            placeholder="Search products, regions, farmers..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            aria-label="Search products"
+            className={`${inputClass} pl-10`}
+          />
+        </div>
       </div>
 
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40">
-        <div className={`flex items-center justify-around p-2 ${darkMode ? "bg-gray-900/95 border-t border-gray-800" : "bg-white/95 border-t border-gray-200"} backdrop-blur-xl`}>
-          {tabs.map(tab => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
+      {/* Category filter */}
+      <div className="flex flex-wrap gap-2">
+        {CATEGORIES.map((cat) => (
+          <button
+            key={cat}
+            onClick={() => setCategory(cat)}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium capitalize transition-colors ${
+              category === cat
+                ? "bg-amber-600 text-white"
+                : dark
+                  ? "bg-gray-800 text-gray-300 hover:bg-gray-700"
+                  : "bg-white text-gray-600 hover:bg-amber-50 border border-gray-200"
+            }`}
+          >
+            {cat}
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-20">
+          <Loader2 className="w-10 h-10 text-amber-600 animate-spin mb-4" />
+          <p className={mutedText}>Loading products...</p>
+        </div>
+      ) : error ? (
+        <div className={`p-10 rounded-2xl border text-center ${cardBorder}`}>
+          <Package className="w-12 h-12 mx-auto mb-4 text-red-400" />
+          <p className="text-red-500 font-medium mb-1">{error}</p>
+          <p className={`text-sm ${mutedText}`}>Please try again in a moment.</p>
+        </div>
+      ) : filteredProducts.length === 0 ? (
+        <div className={`p-16 rounded-2xl border text-center ${cardBorder}`}>
+          <Coffee className="w-12 h-12 mx-auto mb-4 opacity-40" />
+          <p className="text-lg font-medium mb-1">No products found</p>
+          <p className={mutedText}>
+            {searchQuery || category !== "all"
+              ? "Try a different search or category."
+              : "Check back soon — farmers are listing harvests all the time."}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
+          {filteredProducts.map((product, index) => {
+            const isFavorite = favoriteIds.has(product.id);
             return (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id as any)}
-                className={`flex flex-col items-center justify-center p-2 rounded-lg transition-colors flex-1 ${isActive ? darkMode ? "bg-amber-900/30 text-amber-400" : "bg-amber-100 text-amber-700" : darkMode ? "text-gray-400" : "text-gray-600"}`}>
-                <Icon className="w-5 h-5" />
-                <span className="text-xs mt-1">{tab.label}</span>
-              </button>
+              <motion.article
+                key={product.id}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: Math.min(index * 0.04, 0.3) }}
+                className={`rounded-2xl border overflow-hidden shadow-sm hover:shadow-lg transition-shadow ${cardBorder}`}
+              >
+                {product.image_urls?.[0] ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={product.image_urls[0]}
+                    alt={product.name}
+                    className="w-full h-40 object-cover"
+                  />
+                ) : (
+                  <div className="h-40 bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
+                    <Coffee className="w-14 h-14 text-white opacity-80" />
+                  </div>
+                )}
+
+                <div className="p-5">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <h2 className={`font-bold text-lg leading-tight ${headingText}`}>{product.name}</h2>
+                    <div className="flex items-center gap-1">
+                      {product.grade && (
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-xs whitespace-nowrap ${
+                            dark ? "bg-amber-900/30 text-amber-400" : "bg-amber-100 text-amber-700"
+                          }`}
+                        >
+                          {product.grade}
+                        </span>
+                      )}
+                      <button
+                        onClick={() => toggleFavorite(product)}
+                        aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+                        aria-pressed={isFavorite}
+                        className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                      >
+                        <Heart
+                          className={`w-5 h-5 transition-colors ${
+                            isFavorite ? "text-red-500 fill-red-500" : "text-gray-400"
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
+
+                  {product.description && (
+                    <p className={`text-sm mb-3 line-clamp-2 ${mutedText}`}>{product.description}</p>
+                  )}
+
+                  <div className={`space-y-1.5 text-sm mb-4 ${mutedText}`}>
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-4 h-4 shrink-0" />
+                      <span>{product.origin_region}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <User className="w-4 h-4 shrink-0" />
+                      <span>{farmerName(product)}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-end justify-between gap-3">
+                    <div>
+                      <div className="text-xl font-bold text-amber-600 dark:text-amber-500">
+                        ETB {product.price_per_unit.toLocaleString()}
+                        <span className="text-sm font-normal text-gray-500">/{product.unit}</span>
+                      </div>
+                      <div className={`text-sm ${mutedText}`}>
+                        {product.quantity > 0 ? `${product.quantity} ${product.unit} available` : "Out of stock"}
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <button
+                        onClick={() => addToCart(product)}
+                        disabled={addingToCart === product.id || product.quantity <= 0}
+                        aria-label={`Add ${product.name} to cart`}
+                        className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
+                          dark
+                            ? "bg-gray-700 text-white hover:bg-gray-600 disabled:opacity-50"
+                            : "bg-gray-100 text-gray-700 hover:bg-gray-200 disabled:opacity-50"
+                        }`}
+                      >
+                        {addingToCart === product.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <ShoppingCart className="w-4 h-4" />
+                        )}
+                        Cart
+                      </button>
+                      <button
+                        onClick={() => setSelectedProduct(product)}
+                        disabled={product.quantity <= 0}
+                        className="px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-medium hover:bg-amber-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Order Now
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </motion.article>
             );
           })}
         </div>
-      </div>
-
-      {/* Order Modal */}
-      {showOrderModal && selectedProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className={`w-full max-w-lg rounded-2xl shadow-2xl ${darkMode ? "bg-gray-900" : "bg-white"} p-6 max-h-[90vh] overflow-y-auto`}>
-            {orderSuccess ? (
-              <div className="text-center py-8">
-                <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle className="w-8 h-8 text-emerald-600" />
-                </div>
-                <h3 className="text-xl font-bold mb-2">Order Placed!</h3>
-                <p className={darkMode ? "text-gray-400" : "text-gray-600"}>The farmer has been notified.</p>
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center justify-between mb-6">
-                  <div>
-                    <h2 className="text-xl font-bold">Place Order</h2>
-                    <p className={`text-sm ${darkMode ? "text-gray-400" : "text-gray-600"}`}>
-                      {selectedProduct.name} • ETB {selectedProduct.price_per_unit}/kg
-                    </p>
-                  </div>
-                  <button onClick={() => setShowOrderModal(false)} className="p-2 rounded-lg hover:bg-gray-100">✕</button>
-                </div>
-                <div className="space-y-4">
-                  <div>
-                    <label className={`block text-sm font-medium mb-1 ${darkMode ? "text-gray-300" : "text-gray-700"}`}>
-                      Quantity (kg) * <span className="text-amber-500 font-normal">Max: {selectedProduct.quantity} kg</span>
-                    </label>
-                    <input type="number" placeholder="Enter quantity in kg"
-                      value={orderForm.quantity}
-                      onChange={e => setOrderForm({...orderForm, quantity: e.target.value})}
-                      max={selectedProduct.quantity}
-                      className={`w-full px-4 py-2 rounded-lg border ${darkMode ? "bg-gray-800 border-gray-700 text-white" : "border-gray-300"} focus:outline-none focus:ring-2 focus:ring-amber-500`}
-                    />
-                    {orderForm.quantity && (
-                      <p className="text-amber-500 text-sm mt-1 font-medium">
-                        Total: ETB {(parseFloat(orderForm.quantity) * selectedProduct.price_per_unit).toLocaleString()}
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <label className={`block text-sm font-medium mb-1 ${darkMode ? "text-gray-300" : "text-gray-700"}`}>Preferred Delivery Date *</label>
-                    <input type="date"
-                      value={orderForm.deliveryDate}
-                      onChange={e => setOrderForm({...orderForm, deliveryDate: e.target.value})}
-                      min={new Date().toISOString().split('T')[0]}
-                      className={`w-full px-4 py-2 rounded-lg border ${darkMode ? "bg-gray-800 border-gray-700 text-white" : "border-gray-300"} focus:outline-none focus:ring-2 focus:ring-amber-500`}
-                    />
-                  </div>
-                  <div>
-                    <label className={`block text-sm font-medium mb-1 ${darkMode ? "text-gray-300" : "text-gray-700"}`}>Delivery Location *</label>
-                    <input type="text" placeholder="e.g. Hawassa, Sidama Region"
-                      value={orderForm.deliveryLocation}
-                      onChange={e => setOrderForm({...orderForm, deliveryLocation: e.target.value})}
-                      className={`w-full px-4 py-2 rounded-lg border ${darkMode ? "bg-gray-800 border-gray-700 text-white" : "border-gray-300"} focus:outline-none focus:ring-2 focus:ring-amber-500`}
-                    />
-                  </div>
-                  <div>
-                    <label className={`block text-sm font-medium mb-1 ${darkMode ? "text-gray-300" : "text-gray-700"}`}>Payment Method</label>
-                    <select value={orderForm.paymentMethod}
-                      onChange={e => setOrderForm({...orderForm, paymentMethod: e.target.value})}
-                      className={`w-full px-4 py-2 rounded-lg border ${darkMode ? "bg-gray-800 border-gray-700 text-white" : "border-gray-300"} focus:outline-none focus:ring-2 focus:ring-amber-500`}>
-                      <option value="bank_transfer">Bank Transfer</option>
-                      <option value="telebirr">Telebirr</option>
-                      <option value="cbe_birr">CBE Birr</option>
-                      <option value="cash">Cash on Delivery</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className={`block text-sm font-medium mb-1 ${darkMode ? "text-gray-300" : "text-gray-700"}`}>Additional Notes</label>
-                    <textarea placeholder="Any special requirements..."
-                      value={orderForm.notes}
-                      onChange={e => setOrderForm({...orderForm, notes: e.target.value})}
-                      rows={3}
-                      className={`w-full px-4 py-2 rounded-lg border ${darkMode ? "bg-gray-800 border-gray-700 text-white" : "border-gray-300"} focus:outline-none focus:ring-2 focus:ring-amber-500`}
-                    />
-                  </div>
-                </div>
-                <div className="flex flex-col sm:flex-row gap-3 mt-6">
-                  <button onClick={() => setShowOrderModal(false)} className="w-full sm:flex-1 py-2 rounded-lg border border-gray-300 hover:bg-gray-50">Cancel</button>
-                  <button onClick={handleOrder}
-                    disabled={orderSubmitting || !orderForm.quantity || !orderForm.deliveryLocation || !orderForm.deliveryDate}
-                    className="flex-1 py-2 rounded-lg bg-gradient-to-r from-amber-600 to-orange-600 text-white hover:shadow-lg disabled:opacity-50">
-                    {orderSubmitting ? "Placing..." : `Place Order • ETB ${orderForm.quantity ? (parseFloat(orderForm.quantity) * selectedProduct.price_per_unit).toLocaleString() : 0}`}
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
       )}
+
+      {/* Toast */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 24 }}
+            className={`fixed bottom-24 md:bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-xl shadow-2xl flex items-center gap-2 text-sm font-medium ${
+              toast.type === "success"
+                ? "bg-gray-900 text-white"
+                : "bg-red-600 text-white"
+            }`}
+            role="status"
+          >
+            {toast.type === "success" && <CheckCircle className="w-4 h-4 text-emerald-400" />}
+            {toast.message}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Order modal */}
+      <AnimatePresence>
+        {selectedProduct && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+            onClick={() => !orderSubmitting && setSelectedProduct(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.96, y: 12 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.96, y: 12 }}
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Place order"
+              className={`w-full max-w-lg rounded-2xl shadow-2xl p-6 max-h-[90vh] overflow-y-auto ${
+                dark ? "bg-gray-900" : "bg-white"
+              }`}
+            >
+              {orderSuccess ? (
+                <div className="text-center py-8">
+                  <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mx-auto mb-4">
+                    <CheckCircle className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <h3 className="text-xl font-bold mb-2">Order Placed!</h3>
+                  <p className={mutedText}>The farmer has been notified.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-start justify-between gap-4 mb-6">
+                    <div>
+                      <h2 className="text-xl font-bold">Place Order</h2>
+                      <p className={`text-sm mt-0.5 ${mutedText}`}>
+                        {selectedProduct.name} · ETB {selectedProduct.price_per_unit.toLocaleString()}/
+                        {selectedProduct.unit} · sold by {farmerName(selectedProduct)}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setSelectedProduct(null)}
+                      aria-label="Close"
+                      className={`p-2 rounded-lg ${
+                        dark ? "hover:bg-gray-800" : "hover:bg-gray-100"
+                      } transition-colors`}
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label htmlFor="order-quantity" className={`block text-sm font-medium mb-1 ${dark ? "text-gray-300" : "text-gray-700"}`}>
+                        Quantity ({selectedProduct.unit}) *
+                      </label>
+                      <input
+                        id="order-quantity"
+                        type="number"
+                        min="1"
+                        max={selectedProduct.quantity}
+                        placeholder={`Max ${selectedProduct.quantity} ${selectedProduct.unit}`}
+                        value={orderForm.quantity}
+                        onChange={(e) => setOrderForm({ ...orderForm, quantity: e.target.value })}
+                        className={inputClass}
+                      />
+                      {orderForm.quantity && parseFloat(orderForm.quantity) > 0 && (
+                        <p className="text-amber-600 dark:text-amber-500 text-sm mt-1 font-medium">
+                          Total: ETB{" "}
+                          {(parseFloat(orderForm.quantity) * selectedProduct.price_per_unit).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label htmlFor="order-date" className={`block text-sm font-medium mb-1 ${dark ? "text-gray-300" : "text-gray-700"}`}>
+                        Preferred Delivery Date *
+                      </label>
+                      <input
+                        id="order-date"
+                        type="date"
+                        value={orderForm.deliveryDate}
+                        min={new Date().toISOString().split("T")[0]}
+                        onChange={(e) => setOrderForm({ ...orderForm, deliveryDate: e.target.value })}
+                        className={inputClass}
+                      />
+                    </div>
+
+                    <div>
+                      <label htmlFor="order-location" className={`block text-sm font-medium mb-1 ${dark ? "text-gray-300" : "text-gray-700"}`}>
+                        Delivery Location *
+                      </label>
+                      <input
+                        id="order-location"
+                        type="text"
+                        placeholder="e.g. Hawassa, Sidama Region"
+                        value={orderForm.deliveryLocation}
+                        onChange={(e) => setOrderForm({ ...orderForm, deliveryLocation: e.target.value })}
+                        className={inputClass}
+                      />
+                    </div>
+
+                    <div>
+                      <label htmlFor="order-payment" className={`block text-sm font-medium mb-1 ${dark ? "text-gray-300" : "text-gray-700"}`}>
+                        Payment Method
+                      </label>
+                      <select
+                        id="order-payment"
+                        value={orderForm.paymentMethod}
+                        onChange={(e) => setOrderForm({ ...orderForm, paymentMethod: e.target.value })}
+                        className={inputClass}
+                      >
+                        <option value="bank_transfer">Bank Transfer</option>
+                        <option value="telebirr">Telebirr</option>
+                        <option value="cbe_birr">CBE Birr</option>
+                        <option value="cash">Cash on Delivery</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label htmlFor="order-notes" className={`block text-sm font-medium mb-1 ${dark ? "text-gray-300" : "text-gray-700"}`}>
+                        Additional Notes
+                      </label>
+                      <textarea
+                        id="order-notes"
+                        rows={3}
+                        placeholder="Any special requirements..."
+                        value={orderForm.notes}
+                        onChange={(e) => setOrderForm({ ...orderForm, notes: e.target.value })}
+                        className={inputClass}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row gap-3 mt-6">
+                    <button
+                      onClick={() => setSelectedProduct(null)}
+                      disabled={orderSubmitting}
+                      className={`w-full sm:flex-1 py-2.5 rounded-lg border font-medium transition-colors ${
+                        dark
+                          ? "border-gray-600 text-gray-300 hover:bg-gray-800"
+                          : "border-gray-300 text-gray-700 hover:bg-gray-50"
+                      }`}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleOrder}
+                      disabled={
+                        orderSubmitting ||
+                        !orderForm.quantity ||
+                        !orderForm.deliveryLocation ||
+                        !orderForm.deliveryDate
+                      }
+                      className="flex-1 py-2.5 rounded-lg bg-amber-600 text-white font-medium hover:bg-amber-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {orderSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
+                      {orderSubmitting
+                        ? "Placing..."
+                        : `Place Order · ETB ${orderForm.quantity ? (parseFloat(orderForm.quantity) * selectedProduct.price_per_unit).toLocaleString() : "0"}`}
+                    </button>
+                  </div>
+                </>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

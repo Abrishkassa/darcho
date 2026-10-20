@@ -144,7 +144,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE /api/buyer/cart - Clear cart
+// DELETE /api/buyer/cart - Remove one cart item (?itemId=) or clear the whole cart
 export async function DELETE(request: NextRequest) {
   try {
     const session = await getServerSession();
@@ -159,6 +159,25 @@ export async function DELETE(request: NextRequest) {
 
     if (!user?.buyer) {
       return NextResponse.json({ error: 'Buyer not found' }, { status: 404 });
+    }
+
+    const itemIdParam = new URL(request.url).searchParams.get('itemId');
+
+    if (itemIdParam) {
+      const itemId = parseInt(itemIdParam);
+      if (isNaN(itemId)) {
+        return NextResponse.json({ error: 'Invalid item ID' }, { status: 400 });
+      }
+
+      const deleted = await prisma.order.deleteMany({
+        where: { id: itemId, buyerId: user.buyer.id, status: 'cart' }
+      });
+
+      if (deleted.count === 0) {
+        return NextResponse.json({ error: 'Cart item not found' }, { status: 404 });
+      }
+
+      return NextResponse.json({ success: true, message: 'Item removed from cart' });
     }
 
     await prisma.order.deleteMany({

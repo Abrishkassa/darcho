@@ -1,17 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
-import { redirect } from "next/navigation";
 import Link from "next/link";
-import {
-  ArrowLeft,
-  Loader2,
-  RefreshCw,
-  Moon,
-  Sun,
-  Coffee,
-} from "lucide-react";
+import { Loader2, RefreshCw, Truck } from "lucide-react";
+import { useBuyerTheme } from "../theme-context";
 
 interface OrderRow {
   id: number;
@@ -33,27 +25,22 @@ interface OrderRow {
 }
 
 const STATUS_STYLES: Record<string, string> = {
-  pending: "bg-yellow-100 text-yellow-700",
-  confirmed: "bg-blue-100 text-blue-700",
-  processing: "bg-purple-100 text-purple-700",
-  shipped: "bg-indigo-100 text-indigo-700",
-  delivered: "bg-green-100 text-green-700",
-  cancelled: "bg-red-100 text-red-700",
+  pending: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
+  confirmed: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+  processing: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
+  shipped: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400",
+  delivered: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+  cancelled: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
 };
 
+const FILTER_OPTIONS = ["all", "pending", "confirmed", "processing", "shipped", "delivered", "cancelled"];
+
 export default function BuyerOrdersPage() {
-  const { data: session, status: sessionStatus } = useSession();
-  const [darkMode, setDarkMode] = useState(false);
+  const { dark } = useBuyerTheme();
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
-
-  useEffect(() => {
-    if (sessionStatus === "unauthenticated") {
-      redirect("/login");
-    }
-  }, [sessionStatus]);
 
   const fetchOrders = async () => {
     try {
@@ -77,11 +64,9 @@ export default function BuyerOrdersPage() {
   };
 
   useEffect(() => {
-    if (session) {
-      fetchOrders();
-    }
+    fetchOrders();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, statusFilter]);
+  }, [statusFilter]);
 
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat("en-ET", {
@@ -99,192 +84,155 @@ export default function BuyerOrdersPage() {
     });
   };
 
-  const themeClass = darkMode
-    ? "bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-gray-100"
-    : "bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50 text-gray-900";
-
-  const cardClass = darkMode
-    ? "bg-gray-800/50 border-gray-700"
-    : "bg-white border-gray-200";
-
-  if (sessionStatus === "loading") {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-amber-50 to-orange-50">
-        <Loader2 className="w-10 h-10 text-amber-600 animate-spin" />
-      </div>
-    );
-  }
+  const cardBorder = dark ? "border-gray-700 bg-gray-800/60" : "border-gray-200 bg-white";
+  const mutedText = dark ? "text-gray-400" : "text-gray-600";
+  const headingText = dark ? "text-white" : "text-gray-900";
 
   const totalSpent = orders.reduce((sum, o) => sum + (o.total_price || 0), 0);
   const pendingCount = orders.filter((o) => o.status === "pending").length;
 
   return (
-    <div className={`min-h-screen ${themeClass} transition-colors duration-300`}>
-      <div className="max-w-6xl mx-auto p-6">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-4">
-            <Link
-              href="/buyer/dashboard"
-              className={`p-2 rounded-lg border ${cardClass} hover:opacity-80 transition`}
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </Link>
-            <div>
-              <h1 className="text-2xl font-bold">My Orders</h1>
-              <p className={darkMode ? "text-gray-400" : "text-gray-600"}>
-                Track and manage your coffee orders
-              </p>
-            </div>
-          </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className={`text-2xl font-bold ${headingText}`}>My Orders</h1>
+          <p className={`mt-1 ${mutedText}`}>Track and manage your coffee orders</p>
+        </div>
+        <button
+          onClick={fetchOrders}
+          disabled={loading}
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-amber-600 text-white text-sm font-medium hover:bg-amber-700 transition-colors disabled:opacity-50 self-start"
+        >
+          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          Refresh
+        </button>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className={`p-5 rounded-2xl border ${cardBorder}`}>
+          <p className={`text-sm ${mutedText}`}>Total Orders</p>
+          <p className={`text-2xl font-bold mt-1 ${headingText}`}>{orders.length}</p>
+        </div>
+        <div className={`p-5 rounded-2xl border ${cardBorder}`}>
+          <p className={`text-sm ${mutedText}`}>Pending</p>
+          <p className="text-2xl font-bold mt-1 text-amber-600 dark:text-amber-500">{pendingCount}</p>
+        </div>
+        <div className={`p-5 rounded-2xl border ${cardBorder}`}>
+          <p className={`text-sm ${mutedText}`}>Total Spent</p>
+          <p className="text-2xl font-bold mt-1 text-emerald-600 dark:text-emerald-500">{formatCurrency(totalSpent)}</p>
+        </div>
+      </div>
+
+      {/* Status filter */}
+      <div className="flex flex-wrap gap-2">
+        {FILTER_OPTIONS.map((status) => (
           <button
-            onClick={() => setDarkMode(!darkMode)}
-            className={`p-2 rounded-lg border ${cardClass}`}
+            key={status}
+            onClick={() => setStatusFilter(status)}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium capitalize transition-colors ${
+              statusFilter === status
+                ? "bg-amber-600 text-white"
+                : dark
+                  ? "bg-gray-800 text-gray-300 hover:bg-gray-700"
+                  : "bg-white text-gray-600 hover:bg-amber-50 border border-gray-200"
+            }`}
           >
-            {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            {status}
           </button>
-        </div>
+        ))}
+      </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className={`p-5 rounded-2xl border shadow-lg ${cardClass}`}>
-            <p className={darkMode ? "text-gray-400 text-sm" : "text-gray-600 text-sm"}>
-              Total Orders
-            </p>
-            <p className="text-2xl font-bold text-amber-500">{orders.length}</p>
-          </div>
-          <div className={`p-5 rounded-2xl border shadow-lg ${cardClass}`}>
-            <p className={darkMode ? "text-gray-400 text-sm" : "text-gray-600 text-sm"}>
-              Pending
-            </p>
-            <p className="text-2xl font-bold text-yellow-500">{pendingCount}</p>
-          </div>
-          <div className={`p-5 rounded-2xl border shadow-lg ${cardClass}`}>
-            <p className={darkMode ? "text-gray-400 text-sm" : "text-gray-600 text-sm"}>
-              Total Spent
-            </p>
-            <p className="text-2xl font-bold text-green-500">{formatCurrency(totalSpent)}</p>
-          </div>
+      {/* Content */}
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-20">
+          <Loader2 className="w-10 h-10 text-amber-600 animate-spin mb-4" />
+          <p className={mutedText}>Loading your orders...</p>
         </div>
-
-        {/* Filter + Refresh */}
-        <div className="flex items-center justify-between mb-4">
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className={`px-4 py-2 rounded-lg border text-sm ${cardClass}`}
-          >
-            <option value="all">All statuses</option>
-            <option value="pending">Pending</option>
-            <option value="confirmed">Confirmed</option>
-            <option value="processing">Processing</option>
-            <option value="shipped">Shipped</option>
-            <option value="delivered">Delivered</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
+      ) : error ? (
+        <div className={`p-10 rounded-2xl border text-center ${cardBorder}`}>
+          <p className="text-red-500 font-medium mb-4">{error}</p>
           <button
             onClick={fetchOrders}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition text-sm font-medium"
+            className="px-6 py-2.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
           >
-            <RefreshCw className="w-4 h-4" />
-            Refresh
+            Try Again
           </button>
         </div>
-
-        {/* Content */}
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <Loader2 className="w-10 h-10 text-amber-600 animate-spin mb-4" />
-            <p>Loading your orders...</p>
-          </div>
-        ) : error ? (
-          <div className={`p-8 rounded-2xl border text-center ${cardClass}`}>
-            <p className="text-red-500 font-medium mb-4">{error}</p>
-            <button
-              onClick={fetchOrders}
-              className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition"
-            >
-              Try Again
-            </button>
-          </div>
-        ) : orders.length === 0 ? (
-          <div className={`p-16 rounded-2xl border text-center ${cardClass}`}>
-            <Coffee className="w-12 h-12 mx-auto mb-4 opacity-40" />
-            <p className="text-lg font-medium mb-1">No orders yet</p>
-            <p className={darkMode ? "text-gray-400" : "text-gray-600"}>
-              Orders you place will show up here.
-            </p>
+      ) : orders.length === 0 ? (
+        <div className={`p-16 rounded-2xl border text-center ${cardBorder}`}>
+          <Truck className="w-12 h-12 mx-auto mb-4 opacity-40" />
+          <p className="text-lg font-medium mb-1">No orders{statusFilter !== "all" ? ` (${statusFilter})` : " yet"}</p>
+          <p className={mutedText}>
+            {statusFilter !== "all" ? "Try a different filter." : "Orders you place will show up here."}
+          </p>
+          {statusFilter === "all" && (
             <Link
               href="/buyer"
-              className="inline-block mt-4 px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition"
+              className="inline-block mt-4 px-6 py-2.5 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
             >
               Browse Products
             </Link>
-          </div>
-        ) : (
-          <div className={`rounded-2xl border shadow-lg overflow-hidden ${cardClass}`}>
-            <div className="overflow-x-auto">
-              <table className="min-w-full">
-                <thead>
-                  <tr className={darkMode ? "bg-gray-900/50" : "bg-amber-800 text-white"}>
-                    <th className="py-3 px-6 text-left font-semibold">Order #</th>
-                    <th className="py-3 px-6 text-left font-semibold">Product</th>
-                    <th className="py-3 px-6 text-left font-semibold">Farmer</th>
-                    <th className="py-3 px-6 text-left font-semibold">Qty</th>
-                    <th className="py-3 px-6 text-left font-semibold">Total</th>
-                    <th className="py-3 px-6 text-left font-semibold">Date</th>
-                    <th className="py-3 px-6 text-left font-semibold">Status</th>
+          )}
+        </div>
+      ) : (
+        <div className={`rounded-2xl border shadow-sm overflow-hidden ${cardBorder}`}>
+          <div className="overflow-x-auto">
+            <table className="min-w-full">
+              <thead>
+                <tr className={dark ? "bg-gray-900/50" : "bg-amber-800 text-white"}>
+                  <th className="py-3 px-6 text-left font-semibold">Order #</th>
+                  <th className="py-3 px-6 text-left font-semibold">Product</th>
+                  <th className="py-3 px-6 text-left font-semibold">Farmer</th>
+                  <th className="py-3 px-6 text-left font-semibold">Qty</th>
+                  <th className="py-3 px-6 text-left font-semibold">Total</th>
+                  <th className="py-3 px-6 text-left font-semibold">Date</th>
+                  <th className="py-3 px-6 text-left font-semibold">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map((order) => (
+                  <tr
+                    key={order.id}
+                    className={`border-b ${
+                      dark ? "border-gray-700 hover:bg-gray-800/50" : "border-gray-100 hover:bg-amber-50"
+                    } transition-colors`}
+                  >
+                    <td className="py-4 px-6 font-medium whitespace-nowrap">{order.order_number}</td>
+                    <td className="py-4 px-6">
+                      <div className="font-medium">{order.products?.name || "Unknown product"}</div>
+                      {order.products?.grade && <div className={`text-xs ${mutedText}`}>Grade {order.products.grade}</div>}
+                    </td>
+                    <td className="py-4 px-6">
+                      {order.products?.farmers?.users?.full_name || order.products?.farmers?.farm_name || "Unknown farmer"}
+                    </td>
+                    <td className="py-4 px-6 whitespace-nowrap">{order.quantity} kg</td>
+                    <td className="py-4 px-6 font-semibold whitespace-nowrap">{formatCurrency(order.total_price)}</td>
+                    <td className="py-4 px-6 whitespace-nowrap">{formatDate(order.order_date)}</td>
+                    <td className="py-4 px-6">
+                      <span
+                        className={`px-3 py-1 rounded-full text-sm font-medium whitespace-nowrap capitalize ${
+                          STATUS_STYLES[order.status] || "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+                        }`}
+                      >
+                        {order.status}
+                      </span>
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {orders.map((order) => (
-                    <tr
-                      key={order.id}
-                      className={`border-b ${
-                        darkMode ? "border-gray-700 hover:bg-gray-800/50" : "border-gray-100 hover:bg-amber-50"
-                      } transition-colors`}
-                    >
-                      <td className="py-4 px-6 font-medium">{order.order_number}</td>
-                      <td className="py-4 px-6">
-                        <div className="font-medium">{order.products?.name || "Unknown product"}</div>
-                        {order.products?.grade && (
-                          <div className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
-                            Grade {order.products.grade}
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-4 px-6">
-                        {order.products?.farmers?.users?.full_name ||
-                          order.products?.farmers?.farm_name ||
-                          "Unknown farmer"}
-                      </td>
-                      <td className="py-4 px-6">{order.quantity} kg</td>
-                      <td className="py-4 px-6 font-semibold">{formatCurrency(order.total_price)}</td>
-                      <td className="py-4 px-6">{formatDate(order.order_date)}</td>
-                      <td className="py-4 px-6">
-                        <span
-                          className={`px-3 py-1 rounded-full text-sm font-medium ${
-                            STATUS_STYLES[order.status] || "bg-gray-100 text-gray-700"
-                          }`}
-                        >
-                          {order.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div
-              className={`px-6 py-4 border-t text-sm flex justify-between ${
-                darkMode ? "border-gray-700 text-gray-400" : "border-gray-100 text-gray-600"
-              }`}
-            >
-              <span>Showing {orders.length} orders</span>
-            </div>
+                ))}
+              </tbody>
+            </table>
           </div>
-        )}
-      </div>
+          <div
+            className={`px-6 py-4 border-t text-sm ${
+              dark ? "border-gray-700 text-gray-400" : "border-gray-100 text-gray-600"
+            }`}
+          >
+            Showing {orders.length} orders
+          </div>
+        </div>
+      )}
     </div>
   );
 }
