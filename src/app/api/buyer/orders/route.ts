@@ -85,7 +85,10 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { productId, farmerId, quantity, unitPrice, totalPrice, shippingAddress, deliveryDate, paymentMethod, notes } = body;
+    // NOTE: the client may send `deliveryDate`, but it is intentionally not read
+    // or persisted — the orders table has no delivery_date column (only the
+    // lifecycle timestamps confirmed_date/shipped_date/delivered_date).
+    const { productId, farmerId, quantity, unitPrice, totalPrice, shippingAddress, paymentMethod, notes } = body;
 
     const { data: user } = await supabase
       .from('users')
@@ -162,8 +165,11 @@ export async function POST(request: NextRequest) {
       data: order
     });
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error placing order:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    // Surface the message for intentionally-thrown Errors, but never leak
+    // unexpected internals (e.g. database errors) to the client.
+    const message = error instanceof Error ? error.message : 'Failed to place order';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

@@ -5,7 +5,7 @@ import { getServerSession } from 'next-auth';
 const prisma = new PrismaClient();
 
 // GET /api/buyer/profile - Get buyer profile
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const session = await getServerSession();
     if (!session?.user?.email) {

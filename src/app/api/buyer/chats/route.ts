@@ -5,7 +5,7 @@ import { getServerSession } from 'next-auth';
 const prisma = new PrismaClient();
 
 // GET /api/buyer/chats - Get all chat conversations
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const session = await getServerSession();
     if (!session?.user?.email) {
@@ -39,30 +39,42 @@ export async function GET(request: NextRequest) {
     });
 
     // Group by farmer
-    const groupedConversations = conversations.reduce((acc, message) => {
-      const farmerId = user.id === message.senderId ? message.receiverId : message.senderId;
-      const farmerName = user.id === message.senderId ? message.receiver.fullName : message.sender.fullName;
-      
-      if (!acc[farmerId]) {
-        acc[farmerId] = {
-          farmerId,
-          farmerName,
-          lastMessage: message.message,
-          lastMessageTime: message.createdAt,
-          unreadCount: 0,
-          orderNumber: message.order?.orderNumber
-        };
-      }
+    interface ConversationSummary {
+      farmerId: number;
+      farmerName: string;
+      lastMessage: string;
+      lastMessageTime: Date;
+      unreadCount: number;
+      orderNumber?: string | null;
+    }
 
-      if (!message.isRead && message.senderId !== user.id) {
-        acc[farmerId].unreadCount++;
-      }
+    const groupedConversations = conversations.reduce<Record<number, ConversationSummary>>(
+      (acc, message) => {
+        const farmerId = user.id === message.senderId ? message.receiverId : message.senderId;
+        const farmerName = user.id === message.senderId ? message.receiver.fullName : message.sender.fullName;
 
-      return acc;
-    }, {} as any);
+        if (!acc[farmerId]) {
+          acc[farmerId] = {
+            farmerId,
+            farmerName,
+            lastMessage: message.message,
+            lastMessageTime: message.createdAt,
+            unreadCount: 0,
+            orderNumber: message.order?.orderNumber
+          };
+        }
+
+        if (!message.isRead && message.senderId !== user.id) {
+          acc[farmerId].unreadCount++;
+        }
+
+        return acc;
+      },
+      {}
+    );
 
     const unreadCount = Object.values(groupedConversations).reduce(
-      (sum: number, conv: any) => sum + conv.unreadCount, 0
+      (sum, conv) => sum + conv.unreadCount, 0
     );
 
     return NextResponse.json({

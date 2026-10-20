@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { supabase } from '@/app/lib/supabase';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const session = await getServerSession();
     if (!session?.user?.email) {
@@ -108,7 +108,7 @@ export async function GET(request: NextRequest) {
       }
     });
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching dashboard data:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to fetch dashboard data' },
