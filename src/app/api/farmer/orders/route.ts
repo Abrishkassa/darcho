@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    const formattedOrders = (orders || []).map((order: any) => ({
+    const formattedOrders = (orders || []).map((order) => ({
       id: order.id,
       order_number: order.order_number,
       buyer: order.buyers?.users?.full_name || order.buyers?.company_name || 'Unknown Buyer',
@@ -66,12 +66,12 @@ export async function GET(request: NextRequest) {
         total_quantity: totalQuantity,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching farmer orders:', error);
     return NextResponse.json(
       {
         success: false,
-        error: error.message,
+        error: 'Failed to fetch orders',
         orders: [],
         stats: { total_orders: 0, confirmed_orders: 0, total_quantity: 0 },
       },
@@ -101,7 +101,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const updatePayload: Record<string, any> = {
+    const updatePayload: Record<string, unknown> = {
       status,
       delivery_status: deliveryStatus || status,
     };
@@ -141,8 +141,8 @@ export async function PUT(request: NextRequest) {
     }
 
     return NextResponse.json({ success: true, message: 'Order updated successfully', order: updatedOrder });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error updating order:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Failed to update order' }, { status: 500 });
   }
 }

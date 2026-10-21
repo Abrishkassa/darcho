@@ -8,8 +8,11 @@ export const runtime = 'nodejs';
 export async function GET(request: NextRequest) {
   try {
     const session = await verifyFarmerSession(request);
-    
-    if (!session.isValid || session.userRole !== 'farmer') {
+
+    // verifyFarmerSession already resolves the farmer row, which only exists
+    // for farmer accounts — checking the raw role string here was redundant
+    // and never matched.
+    if (!session.isValid || !session.farmerId) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
@@ -22,7 +25,7 @@ export async function GET(request: NextRequest) {
     
     // Calculate date ranges
     const now = new Date();
-    let startDate = new Date();
+    const startDate = new Date();
     
     switch (range) {
       case 'week':
@@ -170,42 +173,11 @@ export async function GET(request: NextRequest) {
       }
     });
     
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching insights:', error);
-    
-    // Return mock data for development
-    const mockInsights = {
-      salesData: [
-        { month: 'Jan', revenue: 45000, orders: 5, avgOrder: 9000 },
-        { month: 'Feb', revenue: 52000, orders: 6, avgOrder: 8667 },
-        { month: 'Mar', revenue: 61000, orders: 7, avgOrder: 8714 },
-      ],
-      stockData: [
-        { product: 'Yirgacheffe AA', quantity: 45.5, value: 127400, category: 'Specialty Coffee' },
-        { product: 'Sidamo Natural', quantity: 32, value: 76800, category: 'Specialty Coffee' },
-      ],
-      performance: {
-        totalRevenue: 158000,
-        totalOrders: 18,
-        avgOrderValue: 8778,
-        growthRate: 15.2,
-        lowStockItems: 1,
-        totalStockValue: 204200,
-      },
-      topProducts: [
-        { name: 'Yirgacheffe AA', revenue: 98000, quantity: 35 },
-        { name: 'Sidamo Natural', revenue: 60000, quantity: 25 },
-      ],
-      recentOrders: [
-        { id: 1, product: 'Yirgacheffe AA', quantity: 10, revenue: 28000, date: '2024-01-15' },
-        { id: 2, product: 'Sidamo Natural', quantity: 15, revenue: 36000, date: '2024-01-14' },
-      ],
-    };
-    
-    return NextResponse.json({
-      success: true,
-      insights: mockInsights,
-      note: 'Using mock data due to error',
-    });
+    return NextResponse.json(
+      { success: false, error: 'Failed to load insights' },
+      { status: 500 }
+    );
   }
 }

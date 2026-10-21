@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  LineChart, Line, PieChart, Pie, Cell, AreaChart, Area
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  PieChart, Pie, Cell, AreaChart, Area
 } from "recharts";
 
 interface SalesData {
@@ -48,6 +49,7 @@ interface InsightsData {
 }
 
 export default function FarmerInsightsPage() {
+  const router = useRouter();
   const [insights, setInsights] = useState<InsightsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
@@ -94,8 +96,7 @@ export default function FarmerInsightsPage() {
     loadInsights();
   }, [timeRange, isClient]); // 👈 Added isClient dependency
 
-  // Colors for charts - make them static
-  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
+  // Colors for the stock distribution chart - kept static for stable renders
   const STOCK_COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6'];
 
   // Don't render anything on server to prevent hydration mismatch
@@ -199,7 +200,7 @@ export default function FarmerInsightsPage() {
               <div>
                 <p className="text-sm text-gray-600">Total Revenue</p>
                 <p className="text-2xl font-bold text-green-700 mt-1">
-                  ₮ {insights.performance.totalRevenue.toLocaleString()}
+                  ETB {insights.performance.totalRevenue.toLocaleString()}
                 </p>
               </div>
               <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
@@ -236,7 +237,7 @@ export default function FarmerInsightsPage() {
               <div>
                 <p className="text-sm text-gray-600">Avg Order Value</p>
                 <p className="text-2xl font-bold text-amber-700 mt-1">
-                  ₮ {insights.performance.avgOrderValue.toLocaleString()}
+                  ETB {insights.performance.avgOrderValue.toLocaleString()}
                 </p>
               </div>
               <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
@@ -251,7 +252,7 @@ export default function FarmerInsightsPage() {
               <div>
                 <p className="text-sm text-gray-600">Stock Value</p>
                 <p className="text-2xl font-bold text-purple-700 mt-1">
-                  ₮ {insights.performance.totalStockValue.toLocaleString()}
+                  ETB {insights.performance.totalStockValue.toLocaleString()}
                 </p>
               </div>
               <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
@@ -277,7 +278,7 @@ export default function FarmerInsightsPage() {
                   <XAxis dataKey="month" stroke="#666" />
                   <YAxis stroke="#666" />
                   <Tooltip 
-                    formatter={(value) => [`₮ ${Number(value).toLocaleString()}`, 'Revenue']}
+                    formatter={(value) => [`ETB ${Number(value).toLocaleString()}`, 'Revenue']}
                     labelFormatter={(label) => `Month: ${label}`}
                   />
                   <Area 
@@ -349,7 +350,7 @@ export default function FarmerInsightsPage() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold text-green-700">₮ {product.revenue.toLocaleString()}</p>
+                    <p className="font-bold text-green-700">ETB {product.revenue.toLocaleString()}</p>
                     <p className="text-sm text-gray-500">Revenue</p>
                   </div>
                 </div>
@@ -368,7 +369,7 @@ export default function FarmerInsightsPage() {
                     <p className="text-sm text-gray-500">{order.product}</p>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold text-blue-700">₮ {order.revenue.toLocaleString()}</p>
+                    <p className="font-bold text-blue-700">ETB {order.revenue.toLocaleString()}</p>
                     <p className="text-sm text-gray-500">{order.quantity} kg • {order.date}</p>
                   </div>
                 </div>
@@ -391,7 +392,10 @@ export default function FarmerInsightsPage() {
                   Consider restocking soon.
                 </p>
               </div>
-              <button className="ml-auto px-5 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium">
+              <button
+                onClick={() => router.push("/farmer/products")}
+                className="ml-auto px-5 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-medium"
+              >
                 View Details
               </button>
             </div>

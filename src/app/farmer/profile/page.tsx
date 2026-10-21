@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { signOut } from "next-auth/react";
+import ProductImageUploader from "@/app/farmer/components/ProductImageUploader";
 
 interface FarmerProfile {
   id: number | string;
@@ -31,7 +33,7 @@ interface Product {
   quantity: number;
   unit: string;
   description?: string;
-  image_url?: string;
+  image_url?: string | null;
   created_at?: string;
 }
 
@@ -46,6 +48,8 @@ interface ApiResponse {
   };
   error?: string;
 }
+
+const JSON_HEADERS: HeadersInit = { "Content-Type": "application/json" };
 
 export default function FarmerProfilePage() {
   const [profile, setProfile] = useState<FarmerProfile | null>(null);
@@ -68,31 +72,25 @@ export default function FarmerProfilePage() {
 
   const router = useRouter();
 
-  const jsonHeaders: HeadersInit = { "Content-Type": "application/json" };
-
   // Load farmer profile
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
       
       const res = await fetch("/api/farmer/profile");
-      
-      console.log("Profile response status:", res.status);
-      
+
       // Handle unauthorized
       if (res.status === 401) {
-        localStorage.clear();
         router.push("/login");
         return;
       }
-      
+
       if (!res.ok) {
         throw new Error(`HTTP error! Status: ${res.status}`);
       }
-      
+
       const data: ApiResponse = await res.json();
-      console.log("Profile API response:", data);
 
       if (data.success && data.profile) {
         setProfile(data.profile);
@@ -108,40 +106,17 @@ export default function FarmerProfilePage() {
       const errorMessage = err instanceof Error ? err.message : "Failed to load profile";
       setError(errorMessage);
       console.error("Profile loading error:", err);
-      
-      // For development: create mock profile if API fails
-      if (process.env.NODE_ENV === "development") {
-        console.log("Using mock profile for development");
-        setProfile({
-          id: 1,
-          fullname: "Abriham Kassa",
-          phone: "+251 972 590 743",
-          email: "abrihamkassa323@gmial.com",
-          region: "Oromia",
-          residence: "Addis Ababa",
-          farm_size: "5 hectares",
-          years_farming: 8,
-          farm_name: "Green Valley Farm",
-          certifications: ["Organic Certified", "Fair Trade", "Rainforest Alliance"],
-          join_date: new Date().toISOString(),
-          experience: "8 years",
-          total_products: 8,
-          total_orders: 24,
-          avg_rating: 4.8,
-          response_time_hours: 2,
-        });
-      }
     } finally {
       setLoading(false);
     }
-  };
+  }, [router]);
 
   // Load products separately
-  const loadProducts = async () => {
+  const loadProducts = useCallback(async () => {
     try {
       setLoadingProducts(true);
       const res = await fetch("/api/farmer/products", {
-        headers: jsonHeaders,
+        headers: JSON_HEADERS,
       });
       
       if (!res.ok) {
@@ -152,7 +127,7 @@ export default function FarmerProfilePage() {
 
       if (data.success && data.products) {
         // Ensure price is a number for all products
-        const validatedProducts = data.products.map((product: any) => ({
+        const validatedProducts = data.products.map((product: Record<string, unknown>) => ({
           ...product,
           price: typeof product.price === 'string' ? parseFloat(product.price) || 0 : 
                  typeof product.price === 'number' ? product.price : 0,
@@ -160,10 +135,10 @@ export default function FarmerProfilePage() {
                    typeof product.quantity === 'number' ? product.quantity : 0,
           unit: product.unit || 'kg'
         }));
-        setProducts(validatedProducts);
+        setProducts(validatedProducts as Product[]);
       } else if (data && Array.isArray(data)) {
         // If data is array directly
-        const validatedProducts = data.map((product: any) => ({
+        const validatedProducts = data.map((product: Record<string, unknown>) => ({
           ...product,
           price: typeof product.price === 'string' ? parseFloat(product.price) || 0 : 
                  typeof product.price === 'number' ? product.price : 0,
@@ -171,7 +146,7 @@ export default function FarmerProfilePage() {
                    typeof product.quantity === 'number' ? product.quantity : 0,
           unit: product.unit || 'kg'
         }));
-        setProducts(validatedProducts);
+        setProducts(validatedProducts as Product[]);
       }
     } catch (err: unknown) {
       console.error("Failed to load products:", err);
@@ -179,17 +154,17 @@ export default function FarmerProfilePage() {
     } finally {
       setLoadingProducts(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    // Add a small delay to ensure localStorage is set after login
+    // Small delay so the session cookie is in place right after login.
     const timer = setTimeout(() => {
       loadProfile();
       loadProducts();
     }, 100);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [loadProfile, loadProducts]);
 
   const handleInputChange = (field: keyof FarmerProfile, value: string | number | string[]) => {
     if (profile) {
@@ -206,13 +181,12 @@ export default function FarmerProfilePage() {
     try {
       const res = await fetch("/api/farmer/profile", {
         method: "PUT",
-        headers: jsonHeaders,
+        headers: JSON_HEADERS,
         body: JSON.stringify(profile),
       });
 
       if (!res.ok) {
         if (res.status === 401) {
-          localStorage.clear();
           router.push("/login");
           return;
         }
@@ -242,7 +216,7 @@ export default function FarmerProfilePage() {
     try {
       const res = await fetch("/api/farmer/products", {
         method: "POST",
-        headers: jsonHeaders,
+        headers: JSON_HEADERS,
         body: JSON.stringify(newProduct),
       });
 
@@ -277,7 +251,7 @@ export default function FarmerProfilePage() {
     try {
       const res = await fetch(`/api/farmer/products?id=${editingProduct.id}`, {
         method: "PUT",
-        headers: jsonHeaders,
+        headers: JSON_HEADERS,
         body: JSON.stringify(editingProduct),
       });
 
@@ -301,7 +275,7 @@ export default function FarmerProfilePage() {
     try {
       const res = await fetch(`/api/farmer/products?id=${productId}`, {
         method: "DELETE",
-        headers: jsonHeaders,
+        headers: JSON_HEADERS,
       });
 
       if (!res.ok) {
@@ -332,10 +306,10 @@ export default function FarmerProfilePage() {
   };
 
   // Helper function to safely format price
-  const formatPrice = (price: any): string => {
+  const formatPrice = (price: unknown): string => {
     if (price === null || price === undefined) return "0.00";
     
-    const numPrice = typeof price === 'string' ? parseFloat(price) : price;
+    const numPrice = typeof price === 'string' ? parseFloat(price) : Number(price);
     
     if (isNaN(numPrice)) return "0.00";
     
@@ -344,8 +318,7 @@ export default function FarmerProfilePage() {
 
   // Handle logout
   const handleLogout = () => {
-    localStorage.clear();
-    router.push("/login");
+    signOut({ callbackUrl: "/login" });
   };
 
   // Handle login redirect
@@ -414,29 +387,6 @@ export default function FarmerProfilePage() {
   return (
     <div className="min-h-screen bg-amber-50 p-4 md:p-6">
       <div className="max-w-6xl mx-auto">
-        {/* Debug Info */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-yellow-800">Debug Mode - Session: {localStorage.getItem("session_id")?.substring(0, 10)}...</span>
-              <button
-                onClick={() => {
-                  console.log("Profile data:", profile);
-                  console.log("Products:", products);
-                  console.log("LocalStorage:", {
-                    session_id: localStorage.getItem("session_id"),
-                    farmer_id: localStorage.getItem("farmer_id"),
-                    user_role: localStorage.getItem("user_role"),
-                  });
-                }}
-                className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded"
-              >
-                Show Data
-              </button>
-            </div>
-          </div>
-        )}
-
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-amber-900">Farmer Profile</h1>
@@ -483,6 +433,7 @@ export default function FarmerProfilePage() {
                 <div className="flex items-center space-x-4">
                   <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center text-amber-800 text-3xl">
                     {profile.profile_image_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
                       <img 
                         src={profile.profile_image_url} 
                         alt={profile.fullname}
@@ -893,6 +844,11 @@ export default function FarmerProfilePage() {
               </div>
 
               <div className="space-y-4">
+                <ProductImageUploader
+                  value={newProduct.image_url || null}
+                  onChange={(url) => setNewProduct({ ...newProduct, image_url: url })}
+                />
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Product Name</label>
                   <input
@@ -1011,6 +967,11 @@ export default function FarmerProfilePage() {
               </div>
 
               <div className="space-y-4">
+                <ProductImageUploader
+                  value={editingProduct.image_url || null}
+                  onChange={(url) => setEditingProduct({ ...editingProduct, image_url: url })}
+                />
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Product Name</label>
                   <input

@@ -47,7 +47,7 @@ export default function LoginPage() {
       if (role === "buyer") {
         router.push("/buyer/dashboard");
       } else if (role === "farmer") {
-        router.push("/farmer/dashboard");
+        router.push("/farmer");
       } else if (role === "admin") {
         router.push("/admin/dashboard");
       } else {
@@ -109,7 +109,7 @@ export default function LoginPage() {
       if (userRole === "buyer") {
         router.push("/buyer/dashboard");
       } else if (userRole === "farmer") {
-        router.push("/farmer/dashboard");
+        router.push("/farmer");
       } else if (userRole === "admin") {
         router.push("/admin/dashboard");
       } else {

@@ -4,6 +4,51 @@ import { verifyFarmerSession } from '@/app/lib/auth';
 
 export const runtime = 'nodejs';
 
+/** Subset of the `products` table that the farmer UI reads. */
+interface ProductRow {
+  id: number;
+  name: string;
+  quantity: number | null;
+  price_per_unit: number | null;
+  category: string | null;
+  description: string | null;
+  image_urls: string[] | null;
+  created_at: string | null;
+  updated_at: string | null;
+  grade: string | null;
+  origin_region: string | null;
+  altitude: string | null;
+  unit: string | null;
+  status: string | null;
+  certifications: string[] | null;
+  harvest_date: string | null;
+  processing_method: string | null;
+}
+
+/** Shape returned to the client. Mirrors the buyer-facing product contract. */
+function formatProduct(product: ProductRow) {
+  return {
+    id: product.id,
+    name: product.name,
+    quantity: product.quantity,
+    price: product.price_per_unit,
+    category: product.category,
+    description: product.description,
+    image_url: product.image_urls?.[0] || null,
+    image_urls: product.image_urls || [],
+    created_at: product.created_at,
+    updated_at: product.updated_at,
+    grade: product.grade,
+    origin: product.origin_region,
+    altitude: product.altitude,
+    unit: product.unit,
+    status: product.status,
+    certifications: product.certifications,
+    harvest_date: product.harvest_date,
+    processing_method: product.processing_method,
+  };
+}
+
 // GET /api/farmer/products - Get all products for the logged-in farmer
 export async function GET(request: NextRequest) {
   try {
@@ -31,25 +76,7 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    const formattedProducts = (products || []).map((product) => ({
-      id: product.id,
-      name: product.name,
-      quantity: product.quantity,
-      price: product.price_per_unit,
-      category: product.category,
-      description: product.description,
-      image_url: product.image_urls?.[0] || null,
-      created_at: product.created_at,
-      updated_at: product.updated_at,
-      grade: product.grade,
-      origin: product.origin_region,
-      altitude: product.altitude,
-      unit: product.unit,
-      status: product.status,
-      certifications: product.certifications,
-      harvest_date: product.harvest_date,
-      processing_method: product.processing_method,
-    }));
+    const formattedProducts = (products || []).map(formatProduct);
 
     const totalQuantity = formattedProducts.reduce((sum, p) => sum + (p.quantity || 0), 0);
     const totalValue = formattedProducts.reduce((sum, p) => sum + (p.quantity || 0) * (p.price || 0), 0);
@@ -64,12 +91,12 @@ export async function GET(request: NextRequest) {
         total_value: totalValue,
       },
     });
-  } catch (error: any) {
-    console.error('❌ Error fetching farmer products:', error);
+  } catch (error) {
+    console.error('Error fetching farmer products:', error);
     return NextResponse.json(
       {
         success: false,
-        error: process.env.NODE_ENV === 'development' ? error.message : 'Failed to fetch products',
+        error: 'Failed to fetch products',
         products: [],
         stats: { total_quantity: 0, product_count: 0, farmer_id: null, total_value: 0 },
       },
@@ -129,25 +156,13 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error;
 
-    const formattedProduct = {
-      id: product.id,
-      name: product.name,
-      quantity: product.quantity,
-      price: product.price_per_unit,
-      category: product.category,
-      description: product.description,
-      image_url: product.image_urls?.[0] || null,
-      created_at: product.created_at,
-      updated_at: product.updated_at,
-    };
-
     return NextResponse.json(
-      { success: true, message: 'Product created successfully', product: formattedProduct },
+      { success: true, message: 'Product created successfully', product: formatProduct(product) },
       { status: 201 }
     );
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error creating product:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Failed to create product' }, { status: 500 });
   }
 }
 
@@ -172,7 +187,7 @@ export async function PUT(request: NextRequest) {
 
     const body = await request.json();
 
-    const updatePayload: Record<string, any> = {};
+    const updatePayload: Record<string, unknown> = {};
     if (body.name !== undefined) updatePayload.name = body.name;
     if (body.category !== undefined) updatePayload.category = body.category;
     if (body.price !== undefined) updatePayload.price_per_unit = parseFloat(body.price);
@@ -182,6 +197,14 @@ export async function PUT(request: NextRequest) {
     if (body.status !== undefined) updatePayload.status = body.status;
     if (body.grade !== undefined) updatePayload.grade = body.grade;
     if (body.origin !== undefined) updatePayload.origin_region = body.origin;
+    if (body.altitude !== undefined) updatePayload.altitude = body.altitude;
+    if (body.processing_method !== undefined) updatePayload.processing_method = body.processing_method;
+    if (body.harvest_date !== undefined) updatePayload.harvest_date = body.harvest_date || null;
+    if (body.certifications !== undefined) updatePayload.certifications = body.certifications;
+    // null clears the image; a string replaces it.
+    if (body.image_url !== undefined) {
+      updatePayload.image_urls = body.image_url ? [body.image_url] : [];
+    }
 
     const { data: product, error } = await supabase
       .from('products')
@@ -197,22 +220,10 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Product not found or unauthorized' }, { status: 404 });
     }
 
-    const formattedProduct = {
-      id: product.id,
-      name: product.name,
-      quantity: product.quantity,
-      price: product.price_per_unit,
-      category: product.category,
-      description: product.description,
-      image_url: product.image_urls?.[0] || null,
-      created_at: product.created_at,
-      updated_at: product.updated_at,
-    };
-
-    return NextResponse.json({ success: true, message: 'Product updated successfully', product: formattedProduct });
-  } catch (error: any) {
+    return NextResponse.json({ success: true, message: 'Product updated successfully', product: formatProduct(product) });
+  } catch (error) {
     console.error('Error updating product:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Failed to update product' }, { status: 500 });
   }
 }
 
@@ -244,8 +255,8 @@ export async function DELETE(request: NextRequest) {
     if (error) throw error;
 
     return NextResponse.json({ success: true, message: 'Product deleted successfully' });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error deleting product:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Failed to delete product' }, { status: 500 });
   }
 }

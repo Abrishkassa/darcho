@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useSession } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { supabase } from "@/app/lib/supabase";
@@ -17,19 +17,14 @@ import {
   BarChart3,
   Home,
   Bell,
-  Search,
   LogOut,
   Settings,
-  HelpCircle,
   ChevronRight,
   ChevronLeft,
-  Coffee,
-  TrendingUp,
-  Shield,
-  Zap,
   Check
 } from "lucide-react";
 import { usePathname } from "next/navigation";
+import { useFarmerTheme } from "@/app/farmer/theme-context";
 
 interface NotificationItem {
   id: number;
@@ -41,37 +36,140 @@ interface NotificationItem {
   created_at: string;
 }
 
+interface FarmSummary {
+  farmName: string;
+  region: string;
+  productCount: number;
+  orderCount: number;
+}
+
+/**
+ * Sidebar farm card. Declared at module scope so it isn't recreated on every
+ * render. Shows real counts, and nothing fake when data is absent.
+ */
+function FarmCard({
+  farm,
+  fallbackName,
+  darkMode,
+}: {
+  farm: FarmSummary | null;
+  fallbackName?: string | null;
+  darkMode: boolean;
+}) {
+  return (
+    <div
+      className={`p-4 rounded-xl mb-6 ${
+        darkMode
+          ? "bg-gradient-to-r from-emerald-900/30 to-green-900/20 border border-emerald-800/30"
+          : "bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200"
+      }`}
+    >
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center">
+          <Leaf className="w-6 h-6 text-white" />
+        </div>
+        <div className="min-w-0">
+          <div className="font-bold truncate">
+            {farm?.farmName || fallbackName || "Your Farm"}
+          </div>
+          <div className={`text-sm truncate ${darkMode ? "text-emerald-400" : "text-emerald-600"}`}>
+            {farm?.region || (farm ? "Region not set" : "Loading…")}
+          </div>
+        </div>
+      </div>
+      {farm && (
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          <div>
+            <div className={darkMode ? "text-gray-400" : "text-gray-600"}>Products</div>
+            <div className="font-bold">{farm.productCount} Listed</div>
+          </div>
+          <div>
+            <div className={darkMode ? "text-gray-400" : "text-gray-600"}>Sales</div>
+            <div className="font-bold">{farm.orderCount} Orders</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function FarmerLayout({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession();
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [darkMode, setDarkMode] = useState(false);
+  const { dark: darkMode, toggle: toggleDarkMode } = useFarmerTheme();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifPanelOpen, setNotifPanelOpen] = useState(false);
   const [notifUserId, setNotifUserId] = useState<number | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [farm, setFarm] = useState<FarmSummary | null>(null);
+  // Anchor for relative timestamps. Kept in state so `timeAgo` stays pure
+  // during render instead of calling the impure `Date.now()`.
+  const [now, setNow] = useState(() => Date.now());
   const notifPanelRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
 
-  const fetchNotifications = async () => {
-    try {
-      const res = await fetch("/api/notifications");
-      const data = await res.json();
-      if (data.success) {
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+
+    const loadNotifications = async () => {
+      try {
+        const res = await fetch("/api/notifications");
+        const data = await res.json();
+        if (cancelled || !data.success) return;
         setNotifications(data.notifications || []);
         setUnreadCount(data.unreadCount || 0);
         if (typeof data.userId === "number") setNotifUserId(data.userId);
+      } catch (err) {
+        console.error("Failed to load notifications:", err);
       }
-    } catch (err) {
-      console.error("Failed to load notifications:", err);
-    }
-  };
+    };
 
-  useEffect(() => {
-    if (session) {
-      fetchNotifications();
-    }
+    loadNotifications();
+    return () => {
+      cancelled = true;
+    };
   }, [session]);
+
+  // Keep relative timestamps ("5m ago") fresh without recomputing during render.
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Real farm summary for the sidebar card — re-fetched whenever the route
+  // changes so the counts stay in step with the page the farmer is viewing.
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+
+    const loadFarm = async () => {
+      try {
+        const res = await fetch("/api/farmer/dashboard");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled || !data.success) return;
+
+        const profile = data.data?.farmerProfile;
+        const stats = data.data?.stats;
+        setFarm({
+          farmName: profile?.farmName || profile?.farm_name || "",
+          region: profile?.region || "",
+          productCount: stats?.totalProducts ?? 0,
+          orderCount: stats?.totalOrders ?? 0,
+        });
+      } catch (err) {
+        // Non-fatal: the sidebar card simply keeps its last known values.
+        console.error("Failed to load farm summary:", err);
+      }
+    };
+
+    loadFarm();
+    return () => {
+      cancelled = true;
+    };
+  }, [session, pathname]);
 
   // Realtime: new notifications for this user push straight into the bell
   useEffect(() => {
@@ -142,7 +240,7 @@ export default function FarmerLayout({ children }: { children: React.ReactNode }
   };
 
   const timeAgo = (dateString: string) => {
-    const seconds = Math.floor((Date.now() - new Date(dateString).getTime()) / 1000);
+    const seconds = Math.floor((now - new Date(dateString).getTime()) / 1000);
     if (seconds < 60) return "just now";
     const minutes = Math.floor(seconds / 60);
     if (minutes < 60) return `${minutes}m ago`;
@@ -246,7 +344,7 @@ export default function FarmerLayout({ children }: { children: React.ReactNode }
             <div className="flex items-center gap-4">
               {/* Theme Toggle */}
               <button
-                onClick={() => setDarkMode(!darkMode)}
+                onClick={toggleDarkMode}
                 className={`p-2 rounded-lg transition-colors ${
                   darkMode 
                     ? "bg-gray-800 text-amber-400 hover:bg-gray-700" 
@@ -256,20 +354,6 @@ export default function FarmerLayout({ children }: { children: React.ReactNode }
               >
                 {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
               </button>
-
-              {/* Search */}
-              <div className="hidden md:block relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search products, orders..."
-                  className={`pl-10 pr-4 py-2 rounded-lg border ${
-                    darkMode 
-                      ? "bg-gray-800 border-gray-700 text-white" 
-                      : "bg-white border-gray-300"
-                  } focus:outline-none focus:ring-2 focus:ring-amber-500`}
-                />
-              </div>
 
               {/* Notifications */}
               <div className="relative" ref={notifPanelRef}>
@@ -368,34 +452,8 @@ export default function FarmerLayout({ children }: { children: React.ReactNode }
           <div className="p-4">
             {/* Farmer Stats */}
             {sidebarOpen && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className={`p-4 rounded-xl mb-6 ${
-                  darkMode 
-                    ? "bg-gradient-to-r from-emerald-900/30 to-green-900/20 border border-emerald-800/30" 
-                    : "bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200"
-                }`}
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center">
-                    <Leaf className="w-6 h-6 text-white" />
-                  </div>
-                  <div>
-                    <div className="font-bold">Green Valley Farm</div>
-                    <div className={`text-sm ${darkMode ? "text-emerald-400" : "text-emerald-600"}`}>Certified Organic</div>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <div className={`${darkMode ? "text-gray-400" : "text-gray-600"}`}>Products</div>
-                    <div className="font-bold">8 Listed</div>
-                  </div>
-                  <div>
-                    <div className={`${darkMode ? "text-gray-400" : "text-gray-600"}`}>Sales</div>
-                    <div className="font-bold">24 Orders</div>
-                  </div>
-                </div>
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                <FarmCard farm={farm} fallbackName={session?.user?.name} darkMode={darkMode} />
               </motion.div>
             )}
 
@@ -447,15 +505,17 @@ export default function FarmerLayout({ children }: { children: React.ReactNode }
                 className="mt-8 pt-6 border-t dark:border-gray-800"
               >
                 <div className="space-y-2">
-                  <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                  <Link
+                    href="/farmer/profile"
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                  >
                     <Settings className="w-5 h-5" />
                     <span>Settings</span>
-                  </button>
-                  <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                    <HelpCircle className="w-5 h-5" />
-                    <span>Help & Support</span>
-                  </button>
-                  <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-red-500">
+                  </Link>
+                  <button
+                    onClick={() => signOut({ callbackUrl: "/login" })}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-red-500"
+                  >
                     <LogOut className="w-5 h-5" />
                     <span>Logout</span>
                   </button>
@@ -480,21 +540,7 @@ export default function FarmerLayout({ children }: { children: React.ReactNode }
             >
               <div className="p-4">
                 {/* Farmer Stats */}
-                <div className={`p-4 rounded-xl mb-6 ${
-                  darkMode 
-                    ? "bg-gradient-to-r from-emerald-900/30 to-green-900/20 border border-emerald-800/30" 
-                    : "bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-200"
-                }`}>
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center">
-                      <Leaf className="w-6 h-6 text-white" />
-                    </div>
-                    <div>
-                      <div className="font-bold">Green Valley Farm</div>
-                      <div className={`text-sm ${darkMode ? "text-emerald-400" : "text-emerald-600"}`}>Certified Organic</div>
-                    </div>
-                  </div>
-                </div>
+                <FarmCard farm={farm} fallbackName={session?.user?.name} darkMode={darkMode} />
 
                 {/* Navigation */}
                 <div className="space-y-2">
@@ -529,6 +575,17 @@ export default function FarmerLayout({ children }: { children: React.ReactNode }
                       </Link>
                     );
                   })}
+                </div>
+
+                {/* Mobile-only account actions */}
+                <div className={`mt-8 pt-6 border-t ${darkMode ? "border-gray-800" : "border-gray-200"}`}>
+                  <button
+                    onClick={() => signOut({ callbackUrl: "/login" })}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-red-500"
+                  >
+                    <LogOut className="w-5 h-5" />
+                    <span>Logout</span>
+                  </button>
                 </div>
               </div>
             </motion.div>

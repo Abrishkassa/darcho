@@ -88,10 +88,10 @@ export async function GET(request: NextRequest) {
         avg_rating: farmer.avg_rating,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching farmer profile:', error);
     return NextResponse.json(
-      { success: false, error: error.message, profile: null, recent_products: [] },
+      { success: false, error: 'Failed to fetch profile', profile: null, recent_products: [] },
       { status: 500 }
     );
   }
@@ -108,7 +108,7 @@ export async function PUT(request: NextRequest) {
 
     const updateData = await request.json();
 
-    const farmerUpdatePayload: Record<string, any> = {};
+    const farmerUpdatePayload: Record<string, unknown> = {};
     if (updateData.farm_name !== undefined) farmerUpdatePayload.farm_name = updateData.farm_name;
     if (updateData.region !== undefined) farmerUpdatePayload.region = updateData.region;
     if (updateData.residence !== undefined) farmerUpdatePayload.residence = updateData.residence;
@@ -128,7 +128,7 @@ export async function PUT(request: NextRequest) {
     }
 
     if (updateData.fullname || updateData.email || updateData.phone) {
-      const userUpdatePayload: Record<string, any> = {};
+      const userUpdatePayload: Record<string, unknown> = {};
       if (updateData.fullname !== undefined) userUpdatePayload.full_name = updateData.fullname;
       if (updateData.email !== undefined) userUpdatePayload.email = updateData.email;
       if (updateData.phone !== undefined) userUpdatePayload.phone = updateData.phone;
@@ -160,11 +160,15 @@ export async function PUT(request: NextRequest) {
       farm_name: farmer.farm_name,
       certifications: farmer.certifications || [],
       join_date: farmer.join_date,
+      experience: farmer.years_farming ? `${farmer.years_farming} years` : 'Not specified',
+      avg_rating: farmer.avg_rating,
+      response_time_hours: farmer.response_time_hours,
+      profile_image_url: farmer.profile_image_url,
     };
 
     return NextResponse.json({ success: true, message: 'Profile updated successfully', profile: responseProfile });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error updating farmer profile:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Failed to update profile' }, { status: 500 });
   }
 }
