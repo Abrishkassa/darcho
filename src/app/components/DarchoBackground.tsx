@@ -8,22 +8,18 @@ import {
   Moon, 
   Menu, 
   X, 
-  Leaf, 
-  Shield, 
   TrendingUp, 
-  Users, 
-  Globe, 
-  Award, 
-  BarChart,
-  MessageSquare,
-  CheckCircle,
   ChevronRight,
   ArrowRight,
-  Sparkles
+  Sparkles,
+  Star
 } from "lucide-react";
 import LoginForm from "../login/page";
 import RegisterForm from "../register/page";
 import ForgotPasswordForm from "../forgot/page";
+import { TrendingFarmersSection, TrendingBuyersSection, ReviewsSection } from "./home/TrendingSections";
+import { DeveloperSection } from "./home/DeveloperSection";
+import { SectionSkeleton, type HomeStats } from "./home/shared";
 
 // Floating coffee beans component - Fixed with client-side randomness
 const CoffeeBean = ({ delay, index }: { delay: number; index: number }) => {
@@ -81,12 +77,38 @@ export default function DarchoBackground() {
   const [active, setActive] = useState("hero");
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [stats, setStats] = useState<HomeStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  // Real homepage statistics. Sections with no data render an honest empty
+  // state, never a fabricated number.
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadStats = async () => {
+      try {
+        const res = await fetch("/api/home/stats");
+        const json = await res.json();
+        if (cancelled) return;
+        if (res.ok && json.success) setStats(json.data);
+      } catch (err) {
+        console.error("Failed to load homepage stats:", err);
+      } finally {
+        if (!cancelled) setStatsLoading(false);
+      }
+    };
+
+    loadStats();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Initialize after mount to avoid hydration issues
   useEffect(() => {
     setMounted(true);
     
-    const sections = ["hero", "about", "how", "features", "pricing", "contact"];
+    const sections = ["hero", "farmers", "buyers", "reviews", "developer"];
     const handleScroll = () => {
       let current = "hero";
       sections.forEach((id) => {
@@ -168,11 +190,10 @@ export default function DarchoBackground() {
             {/* Desktop Navigation */}
             <div className="hidden lg:flex items-center gap-8">
               {[
-                ["about", "About"],
-                ["how", "How It Works"],
-                ["features", "Features"],
-                ["pricing", "Pricing"],
-                ["contact", "Contact"],
+                ["farmers", "Farmers"],
+                ["buyers", "Buyers"],
+                ["reviews", "Reviews"],
+                ["developer", "Developer"],
               ].map(([id, label]) => (
                 <a
                   key={id}
@@ -251,11 +272,10 @@ export default function DarchoBackground() {
             >
               <div className="px-6 py-4 space-y-4">
                 {[
-                  ["about", "About"],
-                  ["how", "How It Works"],
-                  ["features", "Features"],
-                  ["pricing", "Pricing"],
-                  ["contact", "Contact"],
+                  ["farmers", "Farmers"],
+                  ["buyers", "Buyers"],
+                  ["reviews", "Reviews"],
+                  ["developer", "Developer"],
                 ].map(([id, label]) => (
                   <a
                     key={id}
@@ -331,21 +351,44 @@ export default function DarchoBackground() {
                 </motion.button>
               </div>
 
-              {/* Stats */}
-              <div className="grid grid-cols-3 gap-6 mt-12">
-                {[
-                  ["2.5K+", "Active Farmers"],
-                  ["$4.2M+", "Annual Trade"],
-                  ["98%", "Satisfaction"],
-                ].map(([value, label]) => (
-                  <div key={label} className="text-center">
-                    <div className="text-3xl font-bold bg-gradient-to-r from-amber-600 to-orange-600 bg-clip-text text-transparent">
-                      {value}
+              {/* Stats — real counts only. A stat is omitted rather than shown
+                  as a fabricated number when the database has nothing yet. */}
+              {(() => {
+                const total = stats?.totals;
+                const items = [
+                  { value: total?.farmers ?? 0, label: "Coffee Farmers" },
+                  { value: total?.products ?? 0, label: "Active Listings" },
+                  { value: total?.orders ?? 0, label: "Orders Traded" },
+                ].filter((item) => item.value > 0);
+
+                if (statsLoading) {
+                  return (
+                    <div className="grid grid-cols-3 gap-6 mt-12" aria-hidden="true">
+                      {[0, 1, 2].map((i) => (
+                        <div key={i} className="text-center">
+                          <div className="h-8 w-20 mx-auto rounded bg-gray-200/60 dark:bg-gray-700/60 animate-pulse" />
+                          <div className="h-3 w-24 mx-auto mt-2 rounded bg-gray-200/50 dark:bg-gray-700/50 animate-pulse" />
+                        </div>
+                      ))}
                     </div>
-                    <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">{label}</div>
+                  );
+                }
+
+                if (items.length === 0) return null;
+
+                return (
+                  <div className={`grid gap-6 mt-12 ${items.length === 1 ? "grid-cols-1 max-w-xs" : items.length === 2 ? "grid-cols-2 max-w-md" : "grid-cols-3"}`}>
+                    {items.map((item) => (
+                      <div key={item.label} className="text-center">
+                        <div className="text-3xl font-bold bg-gradient-to-r from-amber-600 to-orange-600 bg-clip-text text-transparent">
+                          {item.value.toLocaleString()}
+                        </div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">{item.label}</div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                );
+              })()}
             </motion.div>
 
             {/* Hero Visual */}
@@ -359,303 +402,76 @@ export default function DarchoBackground() {
                 {/* Replace with actual image */}
                 <div className="aspect-[4/3] bg-gradient-to-br from-amber-400 via-orange-500 to-amber-600" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
-                
-                {/* Floating Cards */}
-                <motion.div
-                  animate={{ y: [0, -10, 0] }}
-                  transition={{ duration: 3, repeat: Infinity }}
-                  className="absolute top-1/4 -left-6 bg-white dark:bg-gray-800 rounded-xl p-4 shadow-xl"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30">
-                      <TrendingUp className="w-5 h-5 text-green-600 dark:text-green-400" />
+
+                {/* Floating cards — real figures only, omitted when unavailable. */}
+                {!statsLoading && (stats?.totals.products ?? 0) > 0 && (
+                  <motion.div
+                    animate={{ y: [0, -10, 0] }}
+                    transition={{ duration: 3, repeat: Infinity }}
+                    className="absolute top-1/4 -left-6 bg-white dark:bg-gray-800 rounded-xl p-4 shadow-xl"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30">
+                        <TrendingUp className="w-5 h-5 text-green-600 dark:text-green-400" aria-hidden="true" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-lg">{stats!.totals.products.toLocaleString()}</div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400">Live Listings</div>
+                      </div>
                     </div>
-                    <div>
-                      <div className="font-bold text-lg">+42%</div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">Revenue Growth</div>
+                  </motion.div>
+                )}
+
+                {!statsLoading && (stats?.reviews ?? []).length > 0 && (
+                  <motion.div
+                    animate={{ y: [0, 10, 0] }}
+                    transition={{ duration: 3, repeat: Infinity, delay: 1 }}
+                    className="absolute bottom-1/4 -right-6 bg-white dark:bg-gray-800 rounded-xl p-4 shadow-xl"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
+                        <Star className="w-5 h-5 text-blue-600 dark:text-blue-400" aria-hidden="true" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-lg">{stats!.totals.averageRating.toFixed(1)}</div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400">Avg. Rating</div>
+                      </div>
                     </div>
-                  </div>
-                </motion.div>
-                
-                <motion.div
-                  animate={{ y: [0, 10, 0] }}
-                  transition={{ duration: 3, repeat: Infinity, delay: 1 }}
-                  className="absolute bottom-1/4 -right-6 bg-white dark:bg-gray-800 rounded-xl p-4 shadow-xl"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
-                      <Users className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <div>
-                      <div className="font-bold text-lg">500+</div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">New Buyers</div>
-                    </div>
-                  </div>
-                </motion.div>
+                  </motion.div>
+                )}
               </div>
             </motion.div>
           </div>
         </div>
       </section>
 
-      {/* ================= HOW IT WORKS ================= */}
-      <section id="how" className="py-24 relative">
-        <div className="max-w-7xl mx-auto px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="text-center mb-16"
-          >
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-amber-100 to-orange-100 text-amber-700 mb-4">
-              <span className="text-sm font-semibold">Simple Process</span>
-            </div>
-            <h2 className="text-4xl lg:text-5xl font-bold mb-4">How Darcho Works</h2>
-            <p className="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto">
-              Three simple steps from farm to cup
-            </p>
-          </motion.div>
-
-          <div className="grid md:grid-cols-3 gap-8 relative">
-            {/* Connecting Line */}
-            <div className="hidden md:block absolute top-1/2 left-0 right-0 h-0.5 bg-gradient-to-r from-amber-200 via-orange-200 to-amber-200 transform -translate-y-1/2" />
-            
-            {[
-              {
-                icon: Leaf,
-                title: "Farmers List",
-                description: "Farmers upload verified coffee lots with transparent pricing",
-                color: "from-green-500 to-emerald-600",
-              },
-              {
-                icon: Globe,
-                title: "Buyers Discover",
-                description: "Global buyers browse authenticated lots with quality scores",
-                color: "from-blue-500 to-cyan-600",
-              },
-              {
-                icon: Shield,
-                title: "Secure Trade",
-                description: "Safe transactions with escrow and quality assurance",
-                color: "from-purple-500 to-pink-600",
-              },
-            ].map((step, index) => (
-              <motion.div
-                key={step.title}
-                initial={{ opacity: 0, y: 50 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.2 }}
-                className="relative"
-              >
-                <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-10">
-                  <div className={`w-12 h-12 rounded-full bg-gradient-to-r ${step.color} flex items-center justify-center shadow-lg`}>
-                    <step.icon className="w-6 h-6 text-white" />
-                  </div>
-                </div>
-                <div className={`pt-8 p-8 rounded-2xl bg-white dark:bg-gray-800/50 backdrop-blur-sm border ${
-                  dark ? "border-gray-700" : "border-gray-200"
-                } shadow-xl hover:shadow-2xl transition-all duration-500 transform hover:-translate-y-2`}>
-                  <div className="text-center">
-                    <div className={`text-3xl font-bold bg-gradient-to-r ${step.color} bg-clip-text text-transparent mb-2`}>
-                      0{index + 1}
-                    </div>
-                    <h3 className="text-xl font-bold mb-3">{step.title}</h3>
-                    <p className="text-gray-600 dark:text-gray-400">{step.description}</p>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
+      {/* ================= TRENDING FARMERS ================= */}
+      {statsLoading ? (
+        <section className="py-24">
+          <div className="max-w-7xl mx-auto px-6">
+            <SectionSkeleton dark={dark} />
           </div>
-        </div>
-      </section>
+        </section>
+      ) : (
+        <TrendingFarmersSection farmers={stats?.trendingFarmers ?? []} dark={dark} />
+      )}
 
-      {/* ================= FEATURES ================= */}
-      <section id="features" className="py-24 bg-gradient-to-b from-transparent to-amber-50/50 dark:to-gray-900/50">
-        <div className="max-w-7xl mx-auto px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="text-center mb-16"
-          >
-            <h2 className="text-4xl lg:text-5xl font-bold mb-6">Why Choose Darcho</h2>
-            <p className="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto">
-              Built with farmers in mind - every feature designed for your success
-            </p>
-          </motion.div>
+      {/* ================= TRENDING BUYERS ================= */}
+      {!statsLoading && (
+        <TrendingBuyersSection buyers={stats?.trendingBuyers ?? []} dark={dark} />
+      )}
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {[
-              {
-                icon: Award,
-                title: "Quality Verification",
-                description: "Third-party quality grading and certification",
-                color: "amber",
-              },
-              {
-                icon: TrendingUp,
-                title: "Fair Pricing",
-                description: "Market-based pricing with no hidden fees",
-                color: "green",
-              },
-              {
-                icon: Shield,
-                title: "Secure Payments",
-                description: "Escrow system ensuring safe transactions",
-                color: "blue",
-              },
-              {
-                icon: BarChart,
-                title: "Market Insights",
-                description: "Real-time pricing and demand analytics",
-                color: "purple",
-              },
-              {
-                icon: MessageSquare,
-                title: "Direct Messaging",
-                description: "Communicate directly with buyers",
-                color: "pink",
-              },
-              {
-                icon: Users,
-                title: "Community Support",
-                description: "Connect with other farmers and experts",
-                color: "orange",
-              },
-            ].map((feature, index) => (
-              <motion.div
-                key={feature.title}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
-                onMouseEnter={() => setHoveredCard(feature.title)}
-                onMouseLeave={() => setHoveredCard(null)}
-                className={`p-6 rounded-2xl border transition-all duration-500 ${
-                  dark 
-                    ? "bg-gray-800/50 border-gray-700 hover:border-amber-500" 
-                    : "bg-white border-gray-200 hover:border-amber-400"
-                } hover:shadow-2xl transform hover:-translate-y-1`}
-              >
-                <div className={`p-3 rounded-xl bg-${feature.color}-100 dark:bg-${feature.color}-900/30 w-fit mb-4`}>
-                  <feature.icon className={`w-6 h-6 text-${feature.color}-600 dark:text-${feature.color}-400`} />
-                </div>
-                <h3 className="text-xl font-bold mb-2">{feature.title}</h3>
-                <p className="text-gray-600 dark:text-gray-400 mb-4">{feature.description}</p>
-                <div className={`h-0.5 w-0 transition-all duration-500 ${
-                  hoveredCard === feature.title ? "w-full" : ""
-                } bg-gradient-to-r from-${feature.color}-500 to-${feature.color}-600`} />
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* ================= RATINGS & REVIEWS ================= */}
+      {!statsLoading && (
+        <ReviewsSection
+          reviews={stats?.reviews ?? []}
+          averageRating={stats?.totals.averageRating ?? 0}
+          dark={dark}
+        />
+      )}
 
-      {/* ================= PRICING ================= */}
-      <section id="pricing" className="py-24">
-        <div className="max-w-7xl mx-auto px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="text-center mb-16"
-          >
-            <h2 className="text-4xl lg:text-5xl font-bold mb-6">Transparent Pricing</h2>
-            <p className="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto">
-              Choose the plan that fits your needs. No surprises, just value.
-            </p>
-          </motion.div>
-
-          <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-            {[
-              {
-                name: "Starter",
-                price: "Free",
-                description: "Perfect for new farmers",
-                features: ["5 Listings", "Basic Analytics", "Community Access", "Email Support"],
-                color: "gray",
-                popular: false,
-              },
-              {
-                name: "Professional",
-                price: "299",
-                period: "/month",
-                description: "For growing farms",
-                features: ["Unlimited Listings", "Advanced Analytics", "Priority Placement", "Quality Certification", "24/7 Support"],
-                color: "amber",
-                popular: true,
-              },
-              {
-                name: "Enterprise",
-                price: "Custom",
-                description: "For cooperatives & exporters",
-                features: ["Custom Solutions", "Bulk Tools", "API Access", "Dedicated Account Manager", "Training Sessions"],
-                color: "purple",
-                popular: false,
-              },
-            ].map((plan, index) => (
-              <motion.div
-                key={plan.name}
-                initial={{ opacity: 0, y: 50 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.2 }}
-                className={`relative rounded-3xl border-2 p-8 ${
-                  plan.popular
-                    ? dark 
-                      ? "border-amber-500 bg-gradient-to-b from-gray-900 to-gray-800" 
-                      : "border-amber-500 bg-gradient-to-b from-white to-amber-50"
-                    : dark 
-                      ? "border-gray-700 bg-gray-800/50" 
-                      : "border-gray-200 bg-white"
-                }`}
-              >
-                {plan.popular && (
-                  <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                    <div className="px-4 py-1 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-white text-sm font-semibold">
-                      Most Popular
-                    </div>
-                  </div>
-                )}
-                
-                <div className="text-center mb-8">
-                  <h3 className="text-2xl font-bold mb-2">{plan.name}</h3>
-                  <div className="flex items-center justify-center gap-1 mb-2">
-                    <span className="text-5xl font-bold">{plan.price}</span>
-                    {plan.period && <span className="text-gray-600 dark:text-gray-400">{plan.period}</span>}
-                  </div>
-                  <p className="text-gray-600 dark:text-gray-400">{plan.description}</p>
-                </div>
-                
-                <div className="space-y-4 mb-8">
-                  {plan.features.map((feature, i) => (
-                    <div key={i} className="flex items-center gap-3">
-                      <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
-                      <span className="text-gray-700 dark:text-gray-300">{feature}</span>
-                    </div>
-                  ))}
-                </div>
-                
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => setActiveModal("register")}
-                  className={`w-full py-4 rounded-xl font-semibold transition-all ${
-                    plan.popular
-                      ? "bg-gradient-to-r from-amber-600 to-orange-600 text-white hover:shadow-xl hover:shadow-amber-500/30"
-                      : dark
-                        ? "bg-gray-700 text-white hover:bg-gray-600"
-                        : "bg-gray-100 text-gray-800 hover:bg-gray-200"
-                  }`}
-                >
-                  {plan.name === "Enterprise" ? "Contact Sales" : "Get Started"}
-                </motion.button>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* ================= ABOUT THE DEVELOPER ================= */}
+      <DeveloperSection dark={dark} />
 
       {/* ================= CTA SECTION ================= */}
       <section className="py-24 relative overflow-hidden">
@@ -671,7 +487,7 @@ export default function DarchoBackground() {
               Ready to Transform Your Coffee Business?
             </h2>
             <p className="text-xl text-amber-100 mb-8">
-              Join thousands of farmers already growing with Darcho
+              Join the marketplace connecting Ethiopian coffee farmers with buyers worldwide.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <motion.button
@@ -680,7 +496,7 @@ export default function DarchoBackground() {
                 onClick={() => setActiveModal("register")}
                 className="px-8 py-4 rounded-xl bg-white text-amber-700 font-semibold text-lg hover:shadow-xl transition-all"
               >
-                Start Free Trial
+                Create Free Account
               </motion.button>
               <motion.button
                 whileHover={{ scale: 1.05 }}
@@ -688,7 +504,7 @@ export default function DarchoBackground() {
                 onClick={() => setActiveModal("login")}
                 className="px-8 py-4 rounded-xl border-2 border-white text-white font-semibold text-lg hover:bg-white/10 transition-colors"
               >
-                Schedule Demo
+                Sign In
               </motion.button>
             </div>
           </motion.div>
@@ -709,14 +525,23 @@ export default function DarchoBackground() {
               </div>
             </div>
             
-            <div className="flex gap-6">
-              <a href="#" className="text-gray-600 dark:text-gray-400 hover:text-amber-600 transition-colors">
-                Terms
+            <div className="flex flex-wrap gap-6 justify-center">
+              <a href="#farmers" className="text-gray-600 dark:text-gray-400 hover:text-amber-600 transition-colors">
+                Farmers
               </a>
-              <a href="#" className="text-gray-600 dark:text-gray-400 hover:text-amber-600 transition-colors">
-                Privacy
+              <a href="#buyers" className="text-gray-600 dark:text-gray-400 hover:text-amber-600 transition-colors">
+                Buyers
               </a>
-              <a href="#" className="text-gray-600 dark:text-gray-400 hover:text-amber-600 transition-colors">
+              <a href="#reviews" className="text-gray-600 dark:text-gray-400 hover:text-amber-600 transition-colors">
+                Reviews
+              </a>
+              <a href="#developer" className="text-gray-600 dark:text-gray-400 hover:text-amber-600 transition-colors">
+                Developer
+              </a>
+              <a
+                href="mailto:abrihamkassa323@gmail.com"
+                className="text-gray-600 dark:text-gray-400 hover:text-amber-600 transition-colors"
+              >
                 Contact
               </a>
             </div>
