@@ -9,17 +9,17 @@ import {
   Menu, 
   X, 
   TrendingUp, 
+  Users,
   ChevronRight,
   ArrowRight,
-  Sparkles,
-  Star
+  Sparkles
 } from "lucide-react";
 import LoginForm from "../login/page";
 import RegisterForm from "../register/page";
 import ForgotPasswordForm from "../forgot/page";
-import { TrendingFarmersSection, TrendingBuyersSection, ReviewsSection } from "./home/TrendingSections";
-import { DeveloperSection } from "./home/DeveloperSection";
-import { SectionSkeleton, type HomeStats } from "./home/shared";
+import { FarmersSection, BuyersSection, ReviewsSection } from "./home/TrendingSections";
+import { LatestProductsSection, NoListingsBand } from "./home/LatestProducts";
+import { type HomeStats } from "./home/shared";
 
 // Floating coffee beans component - Fixed with client-side randomness
 const CoffeeBean = ({ delay, index }: { delay: number; index: number }) => {
@@ -108,7 +108,7 @@ export default function DarchoBackground() {
   useEffect(() => {
     setMounted(true);
     
-    const sections = ["hero", "farmers", "buyers", "reviews", "developer"];
+    const sections = ["hero", "listings", "farmers", "buyers", "reviews"];
     const handleScroll = () => {
       let current = "hero";
       sections.forEach((id) => {
@@ -190,10 +190,10 @@ export default function DarchoBackground() {
             {/* Desktop Navigation */}
             <div className="hidden lg:flex items-center gap-8">
               {[
+                ["listings", "Marketplace"],
                 ["farmers", "Farmers"],
                 ["buyers", "Buyers"],
                 ["reviews", "Reviews"],
-                ["developer", "Developer"],
               ].map(([id, label]) => (
                 <a
                   key={id}
@@ -272,10 +272,10 @@ export default function DarchoBackground() {
             >
               <div className="px-6 py-4 space-y-4">
                 {[
+                  ["listings", "Marketplace"],
                   ["farmers", "Farmers"],
                   ["buyers", "Buyers"],
                   ["reviews", "Reviews"],
-                  ["developer", "Developer"],
                 ].map(([id, label]) => (
                   <a
                     key={id}
@@ -403,7 +403,7 @@ export default function DarchoBackground() {
                 <div className="aspect-[4/3] bg-gradient-to-br from-amber-400 via-orange-500 to-amber-600" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
 
-                {/* Floating cards — real figures only, omitted when unavailable. */}
+                {/* Floating card — real figure only, omitted when there is nothing. */}
                 {!statsLoading && (stats?.totals.products ?? 0) > 0 && (
                   <motion.div
                     animate={{ y: [0, -10, 0] }}
@@ -422,7 +422,7 @@ export default function DarchoBackground() {
                   </motion.div>
                 )}
 
-                {!statsLoading && (stats?.reviews ?? []).length > 0 && (
+                {!statsLoading && (stats?.totals.farmers ?? 0) > 0 && (
                   <motion.div
                     animate={{ y: [0, 10, 0] }}
                     transition={{ duration: 3, repeat: Infinity, delay: 1 }}
@@ -430,11 +430,11 @@ export default function DarchoBackground() {
                   >
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30">
-                        <Star className="w-5 h-5 text-blue-600 dark:text-blue-400" aria-hidden="true" />
+                        <Users className="w-5 h-5 text-blue-600 dark:text-blue-400" aria-hidden="true" />
                       </div>
                       <div>
-                        <div className="font-bold text-lg">{stats!.totals.averageRating.toFixed(1)}</div>
-                        <div className="text-sm text-gray-600 dark:text-gray-400">Avg. Rating</div>
+                        <div className="font-bold text-lg">{stats!.totals.farmers.toLocaleString()}</div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400">Farmers</div>
                       </div>
                     </div>
                   </motion.div>
@@ -445,23 +445,26 @@ export default function DarchoBackground() {
         </div>
       </section>
 
-      {/* ================= TRENDING FARMERS ================= */}
+      {/* ================= FRESH LISTINGS ================= */}
       {statsLoading ? (
-        <section className="py-24">
-          <div className="max-w-7xl mx-auto px-6">
-            <SectionSkeleton dark={dark} />
-          </div>
-        </section>
+        <LatestProductsSection products={[]} dark={dark} loading />
+      ) : (stats?.latestProducts ?? []).length > 0 ? (
+        <LatestProductsSection products={stats!.latestProducts} dark={dark} loading={false} />
       ) : (
-        <TrendingFarmersSection farmers={stats?.trendingFarmers ?? []} dark={dark} />
+        <NoListingsBand dark={dark} />
       )}
 
-      {/* ================= TRENDING BUYERS ================= */}
+      {/* ================= FARMERS ================= */}
       {!statsLoading && (
-        <TrendingBuyersSection buyers={stats?.trendingBuyers ?? []} dark={dark} />
+        <FarmersSection farmers={stats?.trendingFarmers ?? []} dark={dark} />
       )}
 
-      {/* ================= RATINGS & REVIEWS ================= */}
+      {/* ================= BUYERS ================= */}
+      {!statsLoading && (
+        <BuyersSection buyers={stats?.trendingBuyers ?? []} dark={dark} />
+      )}
+
+      {/* ================= REVIEWS (hidden until real reviews exist) ================= */}
       {!statsLoading && (
         <ReviewsSection
           reviews={stats?.reviews ?? []}
@@ -469,9 +472,6 @@ export default function DarchoBackground() {
           dark={dark}
         />
       )}
-
-      {/* ================= ABOUT THE DEVELOPER ================= */}
-      <DeveloperSection dark={dark} />
 
       {/* ================= CTA SECTION ================= */}
       <section className="py-24 relative overflow-hidden">
@@ -526,6 +526,9 @@ export default function DarchoBackground() {
             </div>
             
             <div className="flex flex-wrap gap-6 justify-center">
+              <a href="#listings" className="text-gray-600 dark:text-gray-400 hover:text-amber-600 transition-colors">
+                Marketplace
+              </a>
               <a href="#farmers" className="text-gray-600 dark:text-gray-400 hover:text-amber-600 transition-colors">
                 Farmers
               </a>
@@ -535,8 +538,34 @@ export default function DarchoBackground() {
               <a href="#reviews" className="text-gray-600 dark:text-gray-400 hover:text-amber-600 transition-colors">
                 Reviews
               </a>
-              <a href="#developer" className="text-gray-600 dark:text-gray-400 hover:text-amber-600 transition-colors">
-                Developer
+            </div>
+          </div>
+
+          <div className="mt-8 pt-8 border-t dark:border-gray-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <p className="text-sm text-gray-600 dark:text-gray-400 text-center sm:text-left">
+              © {new Date().getFullYear()} Darcho. Empowering Ethiopian coffee farmers worldwide.
+            </p>
+
+            {/* Developer credit — kept quiet here in the footer by design. */}
+            <div className="flex items-center gap-4 text-sm">
+              <span className="text-gray-500 dark:text-gray-500">
+                Built by <span className="font-medium text-gray-700 dark:text-gray-300">Abriham Kassa</span>
+              </span>
+              <a
+                href="https://abriham-portfolio.abrihamkassa323.workers.dev/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-gray-600 dark:text-gray-400 hover:text-amber-600 transition-colors"
+              >
+                Portfolio
+              </a>
+              <a
+                href="https://github.com/Abrishkassa"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-gray-600 dark:text-gray-400 hover:text-amber-600 transition-colors"
+              >
+                GitHub
               </a>
               <a
                 href="mailto:abrihamkassa323@gmail.com"
@@ -545,12 +574,6 @@ export default function DarchoBackground() {
                 Contact
               </a>
             </div>
-          </div>
-          
-          <div className="text-center mt-8 pt-8 border-t dark:border-gray-800">
-            <p className="text-gray-600 dark:text-gray-400">
-              © {new Date().getFullYear()} Darcho. Empowering Ethiopian coffee farmers worldwide.
-            </p>
           </div>
         </div>
       </footer>

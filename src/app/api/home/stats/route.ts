@@ -13,6 +13,7 @@ interface FarmerWithUser {
   certifications: string[] | null;
   profile_image_url: string | null;
   users: { full_name: string | null } | null;
+  products: { id: number }[] | null;
 }
 
 interface BuyerWithUser {
@@ -32,6 +33,24 @@ interface ReviewRow {
   reviewer: { full_name: string | null } | null;
   reviewed: { full_name: string | null } | null;
   order: { products: { name: string | null } | null } | null;
+}
+
+interface ProductRow {
+  id: number;
+  name: string | null;
+  grade: string | null;
+  category: string | null;
+  quantity: number | null;
+  unit: string | null;
+  price_per_unit: number | null;
+  description: string | null;
+  origin_region: string | null;
+  image_urls: string[] | null;
+  farmers: {
+    farm_name: string | null;
+    region: string | null;
+    users: { full_name: string | null } | null;
+  } | null;
 }
 
 function firstInitial(name: string | null | undefined): string {
@@ -55,6 +74,7 @@ export async function GET() {
       { data: reviewRows },
       { data: farmerRows },
       { data: buyerRows },
+      { data: productRows },
     ] = await Promise.all([
       supabase.from('farmers').select('*', { count: 'exact', head: true }),
       supabase.from('buyers').select('*', { count: 'exact', head: true }),
@@ -80,7 +100,8 @@ export async function GET() {
         `)
         .order('created_at', { ascending: false })
         .limit(6),
-      // Farmers ranked by rating for the "trending" list.
+      // Farmers for the spotlight. Rated growers sort first; the rest still
+      // appear as new arrivals so the section is never an empty box.
       supabase
         .from('farmers')
         .select(`
@@ -92,9 +113,9 @@ export async function GET() {
           years_farming,
           certifications,
           profile_image_url,
-          users ( full_name )
+          users ( full_name ),
+          products!products_farmer_id_fkey ( id )
         `)
-        .gt('avg_rating', 0)
         .order('avg_rating', { ascending: false })
         .limit(6),
       // Buyers with their orders, so spend and volume can be ranked in code.
@@ -109,11 +130,32 @@ export async function GET() {
           orders ( total_price )
         `)
         .limit(50),
+      // The three newest live listings — the actual reason buyers land here.
+      supabase
+        .from('products')
+        .select(`
+          id,
+          name,
+          grade,
+          category,
+          quantity,
+          unit,
+          price_per_unit,
+          description,
+          origin_region,
+          image_urls,
+          farmers ( farm_name, region, users ( full_name ) )
+        `)
+        .eq('status', 'available')
+        .gt('quantity', 0)
+        .order('created_at', { ascending: false })
+        .limit(3),
     ]);
 
     const farmers = (farmerRows as unknown as FarmerWithUser[] | null) || [];
     const buyers = (buyerRows as unknown as BuyerWithUser[] | null) || [];
     const reviews = (reviewRows as unknown as ReviewRow[] | null) || [];
+    const products = (productRows as unknown as ProductRow[] | null) || [];
 
     // Rank buyers by how much they have actually purchased. Only buyers with a
     // completed line item count, so an idle account never appears as "trending".
@@ -160,8 +202,22 @@ export async function GET() {
           certifications: f.certifications || [],
           imageUrl: f.profile_image_url || null,
           initial: firstInitial(f.farm_name || f.users?.full_name),
+          listingCount: (f.products || []).length,
         })),
         trendingBuyers: rankedBuyers,
+        latestProducts: products.map((p) => ({
+          id: p.id,
+          name: p.name || 'Coffee lot',
+          grade: p.grade || null,
+          category: p.category || null,
+          quantity: p.quantity || 0,
+          unit: p.unit || 'kg',
+          pricePerUnit: p.price_per_unit || 0,
+          description: p.description || null,
+          originRegion: p.origin_region || p.farmers?.region || null,
+          imageUrl: p.image_urls?.[0] || null,
+          farmerName: p.farmers?.farm_name || p.farmers?.users?.full_name || null,
+        })),
         reviews: reviews.map((r) => ({
           id: r.id,
           rating: r.rating || 0,
