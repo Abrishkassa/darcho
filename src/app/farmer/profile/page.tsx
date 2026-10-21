@@ -60,6 +60,9 @@ export default function FarmerProfilePage() {
   const [isEditing, setIsEditing] = useState(false);
   const [isAddingProduct, setIsAddingProduct] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  // Bumping this re-runs the load effect, so Retry refetches in place instead
+  // of reloading the whole app.
+  const [reloadKey, setReloadKey] = useState(0);
   
   const [newProduct, setNewProduct] = useState<Partial<Product>>({
     name: "",
@@ -157,14 +160,9 @@ export default function FarmerProfilePage() {
   }, []);
 
   useEffect(() => {
-    // Small delay so the session cookie is in place right after login.
-    const timer = setTimeout(() => {
-      loadProfile();
-      loadProducts();
-    }, 100);
-
-    return () => clearTimeout(timer);
-  }, [loadProfile, loadProducts]);
+    loadProfile();
+    loadProducts();
+  }, [loadProfile, loadProducts, reloadKey]);
 
   const handleInputChange = (field: keyof FarmerProfile, value: string | number | string[]) => {
     if (profile) {
@@ -347,7 +345,7 @@ export default function FarmerProfilePage() {
           <p className="text-red-600 mb-4">{error}</p>
           <div className="space-y-2">
             <button
-              onClick={() => window.location.reload()}
+              onClick={() => setReloadKey((k) => k + 1)}
               className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition"
             >
               Try Again

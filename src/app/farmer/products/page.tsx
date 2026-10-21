@@ -186,6 +186,8 @@ export default function FarmerProductsPage() {
       setModalOpen(false);
       setEditing(null);
       setForm(EMPTY_FORM);
+      // Keep the sidebar's product count in step without refetching on nav.
+      window.dispatchEvent(new Event("farmer:data-changed"));
     } catch (err) {
       setFormError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -201,6 +203,7 @@ export default function FarmerProductsPage() {
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.error || "Failed to delete");
       setProducts((prev) => prev.filter((p) => p.id !== product.id));
+      window.dispatchEvent(new Event("farmer:data-changed"));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete product");
     } finally {

@@ -22,101 +22,108 @@ export async function GET() {
 
     const farmerId = user.farmers.id;
 
-    // Total products
-    const { count: totalProducts } = await supabase
-      .from('products')
-      .select('*', { count: 'exact', head: true })
-      .eq('farmer_id', farmerId);
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const thirtyDaysAgoIso = thirtyDaysAgo.toISOString();
 
-    // Total orders
-    const { count: totalOrders } = await supabase
-      .from('orders')
-      .select('*', { count: 'exact', head: true })
-      .eq('farmer_id', farmerId)
-      .neq('status', 'cart');
-
-    // Active orders
-    const { count: activeOrders } = await supabase
-      .from('orders')
-      .select('*', { count: 'exact', head: true })
-      .eq('farmer_id', farmerId)
-      .in('status', ['pending', 'confirmed', 'processing']);
-
-    // Pending orders
-    const { count: pendingOrders } = await supabase
-      .from('orders')
-      .select('*', { count: 'exact', head: true })
-      .eq('farmer_id', farmerId)
-      .eq('status', 'pending');
-
-    // Completed orders
-    const { count: completedOrders } = await supabase
-      .from('orders')
-      .select('*', { count: 'exact', head: true })
-      .eq('farmer_id', farmerId)
-      .eq('status', 'delivered');
-
-    // Total revenue
-    const { data: revenueData } = await supabase
-      .from('orders')
-      .select('total_price')
-      .eq('farmer_id', farmerId)
-      .eq('status', 'delivered');
+    // All of these are independent reads, so run them concurrently instead of
+    // awaiting one after another (which was 11 sequential round-trips).
+    const [
+      { count: totalProducts },
+      { count: totalOrders },
+      { count: activeOrders },
+      { count: pendingOrders },
+      { count: completedOrders },
+      { data: revenueData },
+      { data: monthlyRevenueData },
+      { count: monthlyOrders },
+      { data: recentOrders },
+      { data: lowStockProducts },
+      { data: productPerformance },
+    ] = await Promise.all([
+      // Total products
+      supabase
+        .from('products')
+        .select('*', { count: 'exact', head: true })
+        .eq('farmer_id', farmerId),
+      // Total orders
+      supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('farmer_id', farmerId)
+        .neq('status', 'cart'),
+      // Active orders
+      supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('farmer_id', farmerId)
+        .in('status', ['pending', 'confirmed', 'processing']),
+      // Pending orders
+      supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('farmer_id', farmerId)
+        .eq('status', 'pending'),
+      // Completed orders
+      supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('farmer_id', farmerId)
+        .eq('status', 'delivered'),
+      // Total revenue
+      supabase
+        .from('orders')
+        .select('total_price')
+        .eq('farmer_id', farmerId)
+        .eq('status', 'delivered'),
+      // Monthly revenue (last 30 days)
+      supabase
+        .from('orders')
+        .select('total_price')
+        .eq('farmer_id', farmerId)
+        .eq('status', 'delivered')
+        .gte('order_date', thirtyDaysAgoIso),
+      // Monthly orders count
+      supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('farmer_id', farmerId)
+        .neq('status', 'cart')
+        .gte('order_date', thirtyDaysAgoIso),
+      // Recent orders
+      supabase
+        .from('orders')
+        .select(`
+          *,
+          products ( name, grade ),
+          buyers (
+            users ( full_name, email )
+          )
+        `)
+        .eq('farmer_id', farmerId)
+        .neq('status', 'cart')
+        .order('order_date', { ascending: false })
+        .limit(10),
+      // Low stock products
+      supabase
+        .from('products')
+        .select('*')
+        .eq('farmer_id', farmerId)
+        .eq('status', 'available')
+        .lt('quantity', 10)
+        .order('quantity', { ascending: true })
+        .limit(5),
+      // All products for performance
+      supabase
+        .from('products')
+        .select('id, name, grade, quantity, price_per_unit')
+        .eq('farmer_id', farmerId)
+        .limit(10),
+    ]);
 
     const totalRevenue = revenueData?.reduce((sum, o) => sum + (o.total_price || 0), 0) || 0;
 
-    // Monthly revenue (last 30 days)
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-    const { data: monthlyRevenueData } = await supabase
-      .from('orders')
-      .select('total_price')
-      .eq('farmer_id', farmerId)
-      .eq('status', 'delivered')
-      .gte('order_date', thirtyDaysAgo.toISOString());
-
     const monthlyRevenue = monthlyRevenueData?.reduce((sum, o) => sum + (o.total_price || 0), 0) || 0;
-
-    // Monthly orders count
-    const { count: monthlyOrders } = await supabase
-      .from('orders')
-      .select('*', { count: 'exact', head: true })
-      .eq('farmer_id', farmerId)
-      .neq('status', 'cart')
-      .gte('order_date', thirtyDaysAgo.toISOString());
-
-    // Recent orders
-    const { data: recentOrders } = await supabase
-      .from('orders')
-      .select(`
-        *,
-        products ( name, grade ),
-        buyers (
-          users ( full_name, email )
-        )
-      `)
-      .eq('farmer_id', farmerId)
-      .neq('status', 'cart')
-      .order('order_date', { ascending: false })
-      .limit(10);
-
-    // Low stock products
-    const { data: lowStockProducts } = await supabase
-      .from('products')
-      .select('*')
-      .eq('farmer_id', farmerId)
-      .eq('status', 'available')
-      .lt('quantity', 10)
-      .order('quantity', { ascending: true })
-      .limit(5);
-
-    // All products for performance
-    const { data: productPerformance } = await supabase
-      .from('products')
-      .select('id, name, grade, quantity, price_per_unit')
-      .eq('farmer_id', farmerId)
-      .limit(10);
 
     const formattedRecentOrders = (recentOrders || []).map(order => ({
       id: order.id,

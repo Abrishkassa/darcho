@@ -71,24 +71,36 @@ export default function FarmerDashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Bumping this re-runs the load effect, so Retry refetches in place instead
+  // of doing a full page reload.
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
+
     const load = async () => {
       try {
         setLoading(true);
         setError(null);
         const res = await fetch("/api/farmer/dashboard");
         const json = await res.json();
+        if (cancelled) return;
         if (!res.ok || !json.success) throw new Error(json.error || "Failed to load dashboard");
         setData(json.data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load dashboard");
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load dashboard");
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
     load();
-  }, []);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey]);
 
   const card = `rounded-2xl border shadow-sm ${dark ? "border-gray-700 bg-gray-800/60" : "border-gray-200 bg-white"}`;
   const muted = dark ? "text-gray-400" : "text-gray-600";
@@ -110,7 +122,7 @@ export default function FarmerDashboardPage() {
         <p className="text-red-500 font-medium mb-1">{error || "No dashboard data"}</p>
         <p className={`text-sm mb-4 ${muted}`}>Please try again in a moment.</p>
         <button
-          onClick={() => window.location.reload()}
+          onClick={() => setReloadKey((k) => k + 1)}
           className="px-5 py-2 rounded-lg bg-amber-600 text-white font-medium hover:bg-amber-700 transition-colors"
         >
           Retry

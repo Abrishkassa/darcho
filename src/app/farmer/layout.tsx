@@ -24,7 +24,7 @@ import {
   Check
 } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useFarmerTheme } from "@/app/farmer/theme-context";
+import { FarmerThemeProvider, useFarmerTheme } from "@/app/farmer/theme-context";
 
 interface NotificationItem {
   id: number;
@@ -93,7 +93,7 @@ function FarmCard({
   );
 }
 
-export default function FarmerLayout({ children }: { children: React.ReactNode }) {
+function FarmerShell({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const { dark: darkMode, toggle: toggleDarkMode } = useFarmerTheme();
@@ -138,8 +138,9 @@ export default function FarmerLayout({ children }: { children: React.ReactNode }
     return () => clearInterval(id);
   }, []);
 
-  // Real farm summary for the sidebar card — re-fetched whenever the route
-  // changes so the counts stay in step with the page the farmer is viewing.
+  // Real farm summary for the sidebar card. Fetched once per session rather
+  // than on every route change (which re-ran the whole dashboard query on each
+  // navigation), and refreshed on demand via the `farmer:data-changed` event.
   useEffect(() => {
     if (!session) return;
     let cancelled = false;
@@ -166,10 +167,12 @@ export default function FarmerLayout({ children }: { children: React.ReactNode }
     };
 
     loadFarm();
+    window.addEventListener("farmer:data-changed", loadFarm);
     return () => {
       cancelled = true;
+      window.removeEventListener("farmer:data-changed", loadFarm);
     };
-  }, [session, pathname]);
+  }, [session]);
 
   // Realtime: new notifications for this user push straight into the bell
   useEffect(() => {
@@ -434,6 +437,19 @@ export default function FarmerLayout({ children }: { children: React.ReactNode }
                   <div className={`text-xs ${darkMode ? "text-gray-400" : "text-gray-600"}`}>Coffee Farmer</div>
                 </div>
               </div>
+
+              {/* Logout — kept in the top bar so it is reachable everywhere,
+                  including on mobile where the sidebar is hidden. */}
+              <button
+                onClick={() => signOut({ callbackUrl: "/login" })}
+                title="Logout"
+                aria-label="Logout"
+                className={`p-2 rounded-lg transition-colors text-red-500 ${
+                  darkMode ? "hover:bg-red-900/20" : "hover:bg-red-50"
+                }`}
+              >
+                <LogOut className="w-5 h-5" />
+              </button>
             </div>
           </div>
         </div>
@@ -497,14 +513,15 @@ export default function FarmerLayout({ children }: { children: React.ReactNode }
               })}
             </div>
 
-            {/* Sidebar Footer */}
-            {sidebarOpen && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="mt-8 pt-6 border-t dark:border-gray-800"
-              >
-                <div className="space-y-2">
+            {/* Sidebar Footer — always rendered so Logout is reachable even
+                when the sidebar is collapsed. */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="mt-8 pt-6 border-t dark:border-gray-800"
+            >
+              <div className="space-y-2">
+                {sidebarOpen && (
                   <Link
                     href="/farmer/profile"
                     className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
@@ -512,16 +529,19 @@ export default function FarmerLayout({ children }: { children: React.ReactNode }
                     <Settings className="w-5 h-5" />
                     <span>Settings</span>
                   </Link>
-                  <button
-                    onClick={() => signOut({ callbackUrl: "/login" })}
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-red-500"
-                  >
-                    <LogOut className="w-5 h-5" />
-                    <span>Logout</span>
-                  </button>
-                </div>
-              </motion.div>
-            )}
+                )}
+                <button
+                  onClick={() => signOut({ callbackUrl: "/login" })}
+                  title="Logout"
+                  className={`w-full flex items-center rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-red-500 ${
+                    sidebarOpen ? "gap-3 px-4 py-3" : "justify-center p-3"
+                  }`}
+                >
+                  <LogOut className="w-5 h-5 flex-shrink-0" />
+                  {sidebarOpen && <span>Logout</span>}
+                </button>
+              </div>
+            </motion.div>
           </div>
         </motion.aside>
 
@@ -640,5 +660,13 @@ export default function FarmerLayout({ children }: { children: React.ReactNode }
         </div>
       </div>
     </div>
+  );
+}
+
+export default function FarmerLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <FarmerThemeProvider>
+      <FarmerShell>{children}</FarmerShell>
+    </FarmerThemeProvider>
   );
 }

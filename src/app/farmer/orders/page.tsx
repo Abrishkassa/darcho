@@ -34,6 +34,8 @@ export default function FarmerOrdersPage() {
   const [updateError, setUpdateError] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  // Bumping this re-runs the load effect, so Retry refetches in place.
+  const [reloadKey, setReloadKey] = useState(0);
 
   async function loadOrders() {
     try {
@@ -62,7 +64,7 @@ export default function FarmerOrdersPage() {
 
   useEffect(() => {
     loadOrders();
-  }, []);
+  }, [reloadKey]);
 
   const handleStatusChange = async (orderId: number | string, newStatus: string) => {
     const previousOrders = orders;
@@ -87,8 +89,10 @@ export default function FarmerOrdersPage() {
         throw new Error(data.error || "Failed to update order status");
       }
 
-      // Re-sync stats from the server after a successful change.
+      // Re-sync stats from the server after a successful change, and let the
+      // sidebar card refresh its counts.
       loadOrders();
+      window.dispatchEvent(new Event("farmer:data-changed"));
     } catch (err: unknown) {
       // Revert on failure
       setOrders(previousOrders);
@@ -130,7 +134,7 @@ export default function FarmerOrdersPage() {
         <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-red-400" />
         <p className="text-red-500 font-medium mb-1">{error}</p>
         <button
-          onClick={() => window.location.reload()}
+          onClick={() => setReloadKey((k) => k + 1)}
           className="mt-4 px-5 py-2 rounded-lg bg-amber-600 text-white font-medium hover:bg-amber-700 transition-colors"
         >
           Try Again

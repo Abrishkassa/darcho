@@ -110,6 +110,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Buyer not found' }, { status: 404 });
     }
 
+    // Reject orders that exceed the stock the farmer still has available, so a
+    // buyer can never take more than what is listed.
+    const { data: stockRow, error: stockReadError } = await supabase
+      .from('products')
+      .select('quantity')
+      .eq('id', productId)
+      .single();
+
+    if (stockReadError) throw stockReadError;
+
+    const available = stockRow?.quantity ?? 0;
+
+    if (quantity <= 0) {
+      return NextResponse.json(
+        { success: false, error: 'Order quantity must be greater than zero' },
+        { status: 400 }
+      );
+    }
+
+    if (available < quantity) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Only ${available} kg of this product is available. Please reduce your order quantity.`,
+        },
+        { status: 400 }
+      );
+    }
+
     // Generate order number
     const orderNumber = `ORD-${Date.now()}`;
 
@@ -136,11 +165,22 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error;
 
-    // Update product quantity
-    await supabase.rpc('decrement_quantity', { 
-      product_id: productId, 
-      amount: quantity 
-    }).single();
+    // Decrement the product's remaining stock so the next buyer sees the
+    // reduced amount. There is no `decrement_quantity` RPC in this database,
+    // so we write back the reduced value using the quantity read above.
+    const remaining = available - quantity;
+
+    const { error: stockError } = await supabase
+      .from('products')
+      .update({
+        quantity: remaining > 0 ? remaining : 0,
+        // Mark the listing sold out once nothing is left, so it stops
+        // appearing as orderable to other buyers.
+        ...(remaining > 0 ? {} : { status: 'sold_out' }),
+      })
+      .eq('id', productId);
+
+    if (stockError) throw stockError;
 
     // Notify the farmer of the new order
     const { data: farmerRow } = await supabase

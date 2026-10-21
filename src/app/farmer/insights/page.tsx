@@ -54,16 +54,12 @@ export default function FarmerInsightsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
   const [timeRange, setTimeRange] = useState<"week" | "month" | "quarter" | "year">("month");
-  const [isClient, setIsClient] = useState(false); // 👈 Added for hydration fix
-
-  // Set isClient to true when component mounts on client
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
+  // Bumping this re-runs the fetch, so "Try Again" refetches in place instead
+  // of reloading the whole app.
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
-    // Only fetch data on client side
-    if (!isClient) return;
+    let cancelled = false;
 
     async function loadInsights() {
       try {
@@ -75,6 +71,7 @@ export default function FarmerInsightsPage() {
         }
         
         const data = await res.json();
+        if (cancelled) return;
 
         // Handle different response formats
         if (data.insights) {
@@ -85,22 +82,26 @@ export default function FarmerInsightsPage() {
           throw new Error("No insights data received");
         }
       } catch (err: unknown) {
+        if (cancelled) return;
         const errorMessage = err instanceof Error ? err.message : "Failed to load insights";
         setError(errorMessage);
         console.error("Error loading insights:", err);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
 
     loadInsights();
-  }, [timeRange, isClient]); // 👈 Added isClient dependency
+
+    return () => {
+      cancelled = true;
+    };
+  }, [timeRange, reloadKey]);
 
   // Colors for the stock distribution chart - kept static for stable renders
   const STOCK_COLORS = ['#10B981', '#3B82F6', '#F59E0B', '#EF4444', '#8B5CF6'];
 
-  // Don't render anything on server to prevent hydration mismatch
-  if (!isClient || loading) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-amber-50 p-4 md:p-6">
         <div className="max-w-7xl mx-auto">
@@ -125,7 +126,7 @@ export default function FarmerInsightsPage() {
             <h2 className="text-2xl font-bold text-red-700 mb-3">Error Loading Insights</h2>
             <p className="text-red-600 text-center mb-6 max-w-md">{error}</p>
             <button
-              onClick={() => window.location.reload()}
+              onClick={() => setReloadKey((k) => k + 1)}
               className="px-6 py-3 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition font-medium"
             >
               Try Again
