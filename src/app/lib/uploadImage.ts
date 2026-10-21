@@ -1,17 +1,18 @@
-import { supabase } from './supabase';
-
 export const PRODUCT_IMAGE_BUCKET = 'product-images';
+
+export class ImageUploadError extends Error {}
 
 const MAX_FILE_BYTES = 5 * 1024 * 1024; // 5 MB
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
-export class ImageUploadError extends Error {}
-
 /**
- * Upload a product image to Supabase Storage and return its public URL.
+ * Upload a product image and return its public URL.
+ *
+ * The file is sent to /api/farmer/upload, which verifies the farmer's session
+ * server-side and stores it using the service role key. This keeps the storage
+ * bucket locked down — the browser never gets write access to it.
  *
  * Throws ImageUploadError with a message that is safe to show the user.
- * The caller is responsible for catching it and surfacing the message.
  */
 export async function uploadProductImage(file: File): Promise<string> {
   if (!ALLOWED_TYPES.includes(file.type)) {
@@ -22,29 +23,30 @@ export async function uploadProductImage(file: File): Promise<string> {
     throw new ImageUploadError('Image is too large. Maximum size is 5 MB.');
   }
 
-  const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
-  const path = `products/${crypto.randomUUID()}.${ext}`;
+  const formData = new FormData();
+  formData.append('file', file);
 
-  const { error: uploadError } = await supabase.storage
-    .from(PRODUCT_IMAGE_BUCKET)
-    .upload(path, file, {
-      cacheControl: '31536000',
-      upsert: false,
-      contentType: file.type,
+  let res: Response;
+  try {
+    res = await fetch('/api/farmer/upload', {
+      method: 'POST',
+      body: formData,
     });
-
-  if (uploadError) {
-    throw new ImageUploadError(
-      `Could not upload image: ${uploadError.message}. ` +
-        `Make sure a public "${PRODUCT_IMAGE_BUCKET}" bucket exists in Supabase Storage.`
-    );
+  } catch {
+    throw new ImageUploadError('Could not reach the server. Check your connection and try again.');
   }
 
-  const { data } = supabase.storage.from(PRODUCT_IMAGE_BUCKET).getPublicUrl(path);
-
-  if (!data?.publicUrl) {
-    throw new ImageUploadError('Upload succeeded but no public URL was returned.');
+  let data: { success?: boolean; url?: string; error?: string } = {};
+  try {
+    data = await res.json();
+  } catch {
+    // Non-JSON response (e.g. a platform error page)
+    throw new ImageUploadError('Upload failed. Please try again.');
   }
 
-  return data.publicUrl;
+  if (!res.ok || !data.success || !data.url) {
+    throw new ImageUploadError(data.error || 'Could not upload image. Please try again.');
+  }
+
+  return data.url;
 }
