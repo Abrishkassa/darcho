@@ -34,6 +34,9 @@ export interface TrendingBuyer {
   location: string | null;
   orderCount: number;
   totalSpent: number;
+  /** Average rating from farmers. 0 means nobody has rated them yet. */
+  rating: number;
+  ratingCount: number;
   initial: string;
 }
 

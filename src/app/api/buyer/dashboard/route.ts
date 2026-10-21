@@ -90,6 +90,26 @@ export async function GET() {
       .eq('receiver_id', user.id)
       .eq('is_read', false);
 
+    // Ratings this buyer has received from farmers. A buyer has no stored
+    // rating column, so the average is computed here from the review rows.
+    const { data: receivedReviews } = await supabase
+      .from('reviews')
+      .select('rating')
+      .eq('reviewed_id', user.id);
+
+    const receivedRatings = (receivedReviews || [])
+      .map((r) => r.rating)
+      .filter((r): r is number => typeof r === 'number');
+
+    const averageRating =
+      receivedRatings.length > 0
+        ? Number(
+            (
+              receivedRatings.reduce((sum, r) => sum + r, 0) / receivedRatings.length
+            ).toFixed(1)
+          )
+        : 0;
+
     return NextResponse.json({
       success: true,
       data: {
@@ -99,6 +119,8 @@ export async function GET() {
           cartItems: cartItems || 0,
           favorites: favorites || 0,
           activeChats: activeChats || 0,
+          averageRating,
+          reviewCount: receivedRatings.length,
         },
         recentOrders: recentOrders || [],
         recommendedProducts: recommendedProducts || [],

@@ -44,6 +44,8 @@ interface DashboardData {
     cartItems: number;
     favorites: number;
     activeChats: number;
+    averageRating?: number;
+    reviewCount?: number;
   };
   recentOrders: OrderRow[];
   recommendedProducts: ProductRow[];
@@ -155,6 +157,17 @@ export default function BuyerDashboardPage() {
     { label: "Favorites", value: stats.favorites.toString(), icon: Heart, href: "/buyer/favorites" },
     { label: "Active Chats", value: stats.activeChats.toString(), icon: MessageCircle, href: "/buyer/chats" },
   ];
+
+  // Only surfaced once a farmer has actually rated this buyer, so a new account
+  // is never presented with an empty or zero score.
+  if ((stats.reviewCount ?? 0) > 0) {
+    statCards.push({
+      label: "Your Rating",
+      value: `${(stats.averageRating ?? 0).toFixed(1)} (${stats.reviewCount})`,
+      icon: Star,
+      href: "/buyer/orders",
+    });
+  }
 
   return (
     <div className="space-y-6">

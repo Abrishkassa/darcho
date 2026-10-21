@@ -192,6 +192,22 @@ export function BuyersSection({
                   </span>
                 )}
               </div>
+
+              {/* Farmers rate the buyers they sell to. Only shown once someone
+                  has actually left a rating, so a new buyer is never scored 0. */}
+              {buyer.rating > 0 && (
+                <div className="mt-1.5 flex items-center gap-1.5">
+                  <StarRating rating={buyer.rating} />
+                  <span className={`text-xs tabular-nums ${dark ? "text-stone-400" : "text-stone-500"}`}>
+                    {buyer.rating.toFixed(1)}
+                    {buyer.ratingCount > 0 && (
+                      <span className="ml-1">
+                        ({buyer.ratingCount})
+                      </span>
+                    )}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div className="shrink-0 text-right">

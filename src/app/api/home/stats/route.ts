@@ -18,11 +18,18 @@ interface FarmerWithUser {
 
 interface BuyerWithUser {
   id: number;
+  user_id: number;
   company_name: string | null;
   business_type: string | null;
   location: string | null;
   users: { full_name: string | null } | null;
   orders: { total_price: number | null }[] | null;
+}
+
+/** A rating a buyer has received, used to average it in code. */
+interface BuyerRatingRow {
+  reviewed_id: number;
+  rating: number;
 }
 
 interface ReviewRow {
@@ -75,6 +82,7 @@ export async function GET() {
       { data: farmerRows },
       { data: buyerRows },
       { data: productRows },
+      { data: buyerRatingRowsRaw },
     ] = await Promise.all([
       supabase.from('farmers').select('*', { count: 'exact', head: true }),
       supabase.from('buyers').select('*', { count: 'exact', head: true }),
@@ -119,10 +127,13 @@ export async function GET() {
         .order('avg_rating', { ascending: false })
         .limit(6),
       // Buyers with their orders, so spend and volume can be ranked in code.
+      // `user_id` is included because buyer ratings are stored against the
+      // user, not the buyer profile.
       supabase
         .from('buyers')
         .select(`
           id,
+          user_id,
           company_name,
           business_type,
           location,
@@ -150,12 +161,28 @@ export async function GET() {
         .gt('quantity', 0)
         .order('created_at', { ascending: false })
         .limit(3),
+      // Ratings buyers have received from farmers. There is no stored buyer
+      // rating column, so these are averaged in code below.
+      supabase.from('reviews').select('reviewed_id, rating'),
     ]);
 
     const farmers = (farmerRows as unknown as FarmerWithUser[] | null) || [];
     const buyers = (buyerRows as unknown as BuyerWithUser[] | null) || [];
     const reviews = (reviewRows as unknown as ReviewRow[] | null) || [];
     const products = (productRows as unknown as ProductRow[] | null) || [];
+    const buyerRatingRows =
+      (buyerRatingRowsRaw as unknown as BuyerRatingRow[] | null) || [];
+
+    // Average the ratings each buyer has received, keyed by user id since a
+    // review points at a user rather than a buyer profile.
+    const buyerRatings = new Map<number, { sum: number; count: number }>();
+    for (const row of buyerRatingRows) {
+      if (typeof row.rating !== 'number' || row.reviewed_id == null) continue;
+      const entry = buyerRatings.get(row.reviewed_id) || { sum: 0, count: 0 };
+      entry.sum += row.rating;
+      entry.count += 1;
+      buyerRatings.set(row.reviewed_id, entry);
+    }
 
     // Rank buyers by how much they have actually purchased. Only buyers with a
     // completed line item count, so an idle account never appears as "trending".
@@ -163,6 +190,7 @@ export async function GET() {
       .map((b) => {
         const orders = (b.orders || []).filter((o) => o.total_price != null);
         const totalSpent = orders.reduce((sum, o) => sum + (o.total_price || 0), 0);
+        const ratingEntry = buyerRatings.get(b.user_id);
         return {
           id: b.id,
           name: b.company_name || b.users?.full_name || 'Buyer',
@@ -170,6 +198,11 @@ export async function GET() {
           location: b.location || null,
           orderCount: orders.length,
           totalSpent,
+          // 0 means no farmer has rated this buyer yet; the UI hides the stars.
+          rating: ratingEntry
+            ? Number((ratingEntry.sum / ratingEntry.count).toFixed(1))
+            : 0,
+          ratingCount: ratingEntry?.count || 0,
           initial: firstInitial(b.company_name || b.users?.full_name),
         };
       })
