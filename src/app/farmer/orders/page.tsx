@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, ShoppingBag, AlertTriangle, Search } from "lucide-react";
+import { Loader2, ShoppingBag, AlertTriangle, Search, Star, Check } from "lucide-react";
 import { useFarmerTheme } from "@/app/farmer/theme-context";
+import { ReviewDialog, ReviewBadge, type ReviewTarget } from "@/app/components/ReviewDialog";
 
 interface Order {
   id: number | string;
@@ -22,6 +23,15 @@ interface OrderStats {
   total_quantity: number;
 }
 
+/** A review the farmer can still leave, or has already left, for an order. */
+interface ReviewRow {
+  orderId: number;
+  reviewId?: number;
+  rating?: number;
+  comment?: string | null;
+  counterpartyName: string;
+}
+
 const STATUS_OPTIONS = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled"];
 
 export default function FarmerOrdersPage() {
@@ -36,6 +46,23 @@ export default function FarmerOrdersPage() {
   const [search, setSearch] = useState("");
   // Bumping this re-runs the load effect, so Retry refetches in place.
   const [reloadKey, setReloadKey] = useState(0);
+
+  // Reviews the farmer can write (delivered orders) and the ones already written.
+  const [pendingReviews, setPendingReviews] = useState<ReviewRow[]>([]);
+  const [writtenReviews, setWrittenReviews] = useState<ReviewRow[]>([]);
+  const [reviewTarget, setReviewTarget] = useState<ReviewTarget | null>(null);
+
+  async function loadReviews() {
+    try {
+      const res = await fetch("/api/reviews");
+      const json = await res.json();
+      if (!res.ok || !json.success) return;
+      setPendingReviews(json.data.pending || []);
+      setWrittenReviews(json.data.written || []);
+    } catch {
+      // Reviews are supplementary; a failure must not blank the orders table.
+    }
+  }
 
   async function loadOrders() {
     try {
@@ -64,6 +91,7 @@ export default function FarmerOrdersPage() {
 
   useEffect(() => {
     loadOrders();
+    loadReviews();
   }, [reloadKey]);
 
   const handleStatusChange = async (orderId: number | string, newStatus: string) => {
@@ -238,6 +266,7 @@ export default function FarmerOrdersPage() {
                   <th className="px-5 py-3 text-right font-medium">Quantity</th>
                   <th className="px-5 py-3 text-right font-medium">Total</th>
                   <th className="px-5 py-3 text-left font-medium">Status</th>
+                  <th className="px-5 py-3 text-left font-medium">Review</th>
                 </tr>
               </thead>
               <tbody>
@@ -278,6 +307,67 @@ export default function FarmerOrdersPage() {
                         <span className={`ml-2 text-xs ${muted}`}>Saving…</span>
                       )}
                     </td>
+                    <td className="px-5 py-3">
+                      {(() => {
+                        const orderId = Number(order.id);
+                        const written = writtenReviews.find((r) => r.orderId === orderId);
+                        if (written) {
+                          return (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setReviewTarget({
+                                  orderId,
+                                  orderNumber: order.order_number || `#${order.id}`,
+                                  productName: order.product,
+                                  counterpartyName: written.counterpartyName,
+                                  counterpartyRole: "buyer",
+                                  existingRating: written.rating,
+                                  existingComment: written.comment,
+                                })
+                              }
+                              className="text-left hover:opacity-80 transition-opacity"
+                              aria-label={`Edit your review of ${written.counterpartyName}`}
+                            >
+                              <ReviewBadge rating={written.rating || 0} comment={written.comment ?? null} />
+                            </button>
+                          );
+                        }
+
+                        const pending = pendingReviews.find((r) => r.orderId === orderId);
+                        if (pending) {
+                          return (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setReviewTarget({
+                                  orderId,
+                                  orderNumber: order.order_number || `#${order.id}`,
+                                  productName: order.product,
+                                  counterpartyName: pending.counterpartyName,
+                                  counterpartyRole: "buyer",
+                                })
+                              }
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-medium hover:bg-amber-700 transition-colors"
+                            >
+                              <Star className="w-3.5 h-3.5" aria-hidden="true" />
+                              Rate
+                            </button>
+                          );
+                        }
+
+                        if (order.status === "delivered") {
+                          return (
+                            <span className={`inline-flex items-center gap-1.5 text-xs ${muted}`}>
+                              <Check className="w-3.5 h-3.5" aria-hidden="true" />
+                              Done
+                            </span>
+                          );
+                        }
+
+                        return <span className={`text-xs ${muted}`}>—</span>;
+                      })()}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -296,6 +386,20 @@ export default function FarmerOrdersPage() {
             </button>
           </div>
         </div>
+      )}
+
+      {reviewTarget && (
+        <ReviewDialog
+          target={reviewTarget}
+          onClose={() => setReviewTarget(null)}
+          onSubmitted={() => {
+            setReviewTarget(null);
+            loadReviews();
+            // A new review can change the farmer's average rating, so tell the
+            // rest of the farmer portal its cached figures are stale.
+            window.dispatchEvent(new Event("farmer:data-changed"));
+          }}
+        />
       )}
     </div>
   );

@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Loader2, RefreshCw, Truck } from "lucide-react";
+import { Loader2, RefreshCw, Truck, Star, Check } from "lucide-react";
 import { useBuyerTheme } from "../theme-context";
+import { ReviewDialog, ReviewBadge, type ReviewTarget } from "@/app/components/ReviewDialog";
 
 interface OrderRow {
   id: number;
@@ -24,6 +25,15 @@ interface OrderRow {
   };
 }
 
+/** A review this buyer has left, or still can leave, for a delivered order. */
+interface ReviewRow {
+  orderId: number;
+  reviewId?: number;
+  rating?: number;
+  comment?: string | null;
+  counterpartyName: string;
+}
+
 const STATUS_STYLES: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
   confirmed: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
@@ -41,6 +51,23 @@ export default function BuyerOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  // Reviews the buyer can write (delivered orders) and the ones already written.
+  const [pendingReviews, setPendingReviews] = useState<ReviewRow[]>([]);
+  const [writtenReviews, setWrittenReviews] = useState<ReviewRow[]>([]);
+  const [reviewTarget, setReviewTarget] = useState<ReviewTarget | null>(null);
+
+  const fetchReviews = async () => {
+    try {
+      const res = await fetch("/api/reviews");
+      const json = await res.json();
+      if (!res.ok || !json.success) return;
+      setPendingReviews(json.data.pending || []);
+      setWrittenReviews(json.data.written || []);
+    } catch {
+      // Reviews are supplementary; a failure here must not blank the orders table.
+    }
+  };
 
   const fetchOrders = async () => {
     try {
@@ -65,6 +92,7 @@ export default function BuyerOrdersPage() {
 
   useEffect(() => {
     fetchOrders();
+    fetchReviews();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter]);
 
@@ -189,6 +217,7 @@ export default function BuyerOrdersPage() {
                   <th className="py-3 px-6 text-left font-semibold">Total</th>
                   <th className="py-3 px-6 text-left font-semibold">Date</th>
                   <th className="py-3 px-6 text-left font-semibold">Status</th>
+                  <th className="py-3 px-6 text-left font-semibold">Review</th>
                 </tr>
               </thead>
               <tbody>
@@ -219,6 +248,66 @@ export default function BuyerOrdersPage() {
                         {order.status}
                       </span>
                     </td>
+                    <td className="py-4 px-6">
+                      {(() => {
+                        const written = writtenReviews.find((r) => r.orderId === order.id);
+                        if (written) {
+                          return (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setReviewTarget({
+                                  orderId: order.id,
+                                  orderNumber: order.order_number,
+                                  productName: order.products?.name ?? null,
+                                  counterpartyName: written.counterpartyName,
+                                  counterpartyRole: "farmer",
+                                  existingRating: written.rating,
+                                  existingComment: written.comment,
+                                })
+                              }
+                              className="text-left hover:opacity-80 transition-opacity"
+                              aria-label={`Edit your review of ${written.counterpartyName}`}
+                            >
+                              <ReviewBadge rating={written.rating || 0} comment={written.comment ?? null} />
+                            </button>
+                          );
+                        }
+
+                        const pending = pendingReviews.find((r) => r.orderId === order.id);
+                        if (pending) {
+                          return (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setReviewTarget({
+                                  orderId: order.id,
+                                  orderNumber: order.order_number,
+                                  productName: order.products?.name ?? null,
+                                  counterpartyName: pending.counterpartyName,
+                                  counterpartyRole: "farmer",
+                                })
+                              }
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-medium hover:bg-amber-700 transition-colors"
+                            >
+                              <Star className="w-3.5 h-3.5" aria-hidden="true" />
+                              Rate
+                            </button>
+                          );
+                        }
+
+                        if (order.status === "delivered") {
+                          return (
+                            <span className={`inline-flex items-center gap-1.5 text-xs ${mutedText}`}>
+                              <Check className="w-3.5 h-3.5" aria-hidden="true" />
+                              Done
+                            </span>
+                          );
+                        }
+
+                        return <span className={`text-xs ${mutedText}`}>—</span>;
+                      })()}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -232,6 +321,20 @@ export default function BuyerOrdersPage() {
             Showing {orders.length} orders
           </div>
         </div>
+      )}
+
+      {reviewTarget && (
+        <ReviewDialog
+          target={reviewTarget}
+          onClose={() => setReviewTarget(null)}
+          onSubmitted={() => {
+            setReviewTarget(null);
+            fetchReviews();
+            // Refresh the homepage figures too, since a new review can change
+            // the farmer's average rating.
+            window.dispatchEvent(new Event("farmer:data-changed"));
+          }}
+        />
       )}
     </div>
   );

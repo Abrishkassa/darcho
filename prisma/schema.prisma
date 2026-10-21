@@ -133,7 +133,7 @@ model Order {
   buyer           Buyer     @relation(fields: [buyerId], references: [id])
   farmer          Farmer    @relation(fields: [farmerId], references: [id])
   messages        Message[]
-  review          Review?
+  reviews         Review[]
   
   @@map("orders")
 }
@@ -157,7 +157,7 @@ model Message {
 
 model Review {
   id          Int      @id @default(autoincrement())
-  orderId     Int      @unique @map("order_id")
+  orderId     Int      @map("order_id")
   reviewerId  Int      @map("reviewer_id")
   reviewedId  Int      @map("reviewed_id")
   rating      Int
@@ -169,6 +169,9 @@ model Review {
   reviewer    User     @relation("ReviewsGiven", fields: [reviewerId], references: [id])
   reviewed    User     @relation("ReviewsReceived", fields: [reviewedId], references: [id])
   
+  // One review per person per order, so both sides of a trade can review the
+  // other without the first review blocking the second.
+  @@unique([orderId, reviewerId])
   @@map("reviews")
 }
 
